@@ -25,7 +25,13 @@ router.post('/', async (req, res, next) => {
     const stockData = await getStockData(ticker);
     const forecast = await getForecast(stockData);
 
-    res.json({ forecast, ticker, companyName: stockData.profile.name, quote: stockData.quote });
+    res.json({
+      forecast,
+      ticker,
+      companyName: stockData.profile.name,
+      quote: stockData.quote,
+      monthlyCloses: stockData.monthlyCloses.slice(-12),
+    });
   } catch (err) {
     next(err);
   }

@@ -10,6 +10,7 @@ import ErrorBanner from './components/ErrorBanner.jsx';
 import ForecastForm from './components/ForecastForm.jsx';
 import ForecastResult from './components/ForecastResult.jsx';
 import ForecastLoadingState from './components/ForecastLoadingState.jsx';
+import ForecastChart from './components/ForecastChart.jsx';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState('home');
@@ -26,6 +27,7 @@ export default function App() {
   const [forecastTicker, setForecastTicker] = useState('');
   const [forecastCompanyName, setForecastCompanyName] = useState('');
   const [forecastQuote, setForecastQuote] = useState(null);
+  const [forecastMonthlyCloses, setForecastMonthlyCloses] = useState(null);
 
   async function handleSubmit(formData) {
     setLoading(true);
@@ -45,12 +47,14 @@ export default function App() {
     setForecastLoading(true);
     setForecastError(null);
     setForecast(null);
+    setForecastMonthlyCloses(null);
     try {
       const result = await fetchForecast(ticker);
       setForecast(result.forecast);
       setForecastTicker(result.ticker);
       setForecastCompanyName(result.companyName);
       setForecastQuote(result.quote ?? null);
+      setForecastMonthlyCloses(result.monthlyCloses ?? null);
     } catch (err) {
       setForecastError(err.message);
     } finally {
@@ -134,6 +138,14 @@ export default function App() {
               Stock Forecast
             </h2>
             <ForecastForm onSubmit={handleForecast} disabled={forecastLoading} />
+            {forecast && forecastQuote && forecast.bull?.priceTargetRange && forecast.bear?.downsideScenario && (
+              <ForecastChart
+                monthlyCloses={forecastMonthlyCloses}
+                currentPrice={forecastQuote.price}
+                bullMid={Math.round((forecast.bull.priceTargetRange.low + forecast.bull.priceTargetRange.high) / 2)}
+                bearMid={Math.round((forecast.bear.downsideScenario.low + forecast.bear.downsideScenario.high) / 2)}
+              />
+            )}
           </div>
 
           {(forecastLoading || forecastError || forecast) && (

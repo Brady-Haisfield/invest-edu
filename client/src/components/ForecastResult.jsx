@@ -28,6 +28,7 @@ const muted = { color: 'var(--text-muted)', fontSize: '0.82rem', lineHeight: 1.5
 export default function ForecastResult({ forecast, ticker, companyName, quote }) {
   const { keyMetrics, verdict, bull, bear, educationalNote } = forecast;
   const [noteOpen, setNoteOpen] = useState(false);
+  const [howOpen, setHowOpen] = useState(false);
 
   const lean = verdict?.lean?.toLowerCase() ?? 'neutral';
   const leanStyle = LEAN_COLORS[lean] ?? LEAN_COLORS.neutral;
@@ -83,6 +84,11 @@ export default function ForecastResult({ forecast, ticker, companyName, quote })
           </span>
         )}
       </div>
+
+      {/* ── Time horizon label ── */}
+      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+        This forecast looks 6–12 months ahead. It is educational, not a guarantee.
+      </p>
 
       {/* ── Metrics strip ── */}
       {keyMetrics?.length > 0 && (
@@ -194,6 +200,57 @@ export default function ForecastResult({ forecast, ticker, companyName, quote })
           )}
         </div>
       )}
+
+      {/* ── How this forecast is made ── */}
+      <div style={{
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-sm)',
+        overflow: 'hidden',
+      }}>
+        <button
+          onClick={() => setHowOpen((v) => !v)}
+          style={{
+            width: '100%',
+            background: 'none',
+            border: 'none',
+            padding: '8px 14px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            color: 'var(--text-muted)',
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            letterSpacing: '0.03em',
+          }}
+        >
+          <span>How this forecast is made</span>
+          <span style={{ fontSize: '0.65rem' }}>{howOpen ? '▲' : '▼'}</span>
+        </button>
+        {howOpen && (
+          <ul style={{
+            margin: 0,
+            padding: '4px 14px 12px',
+            listStyle: 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '7px',
+            borderTop: '1px solid var(--border)',
+          }}>
+            {[
+              { icon: '📊', text: 'Real market data — current price, 52-week range, and key ratios pulled live from Finnhub' },
+              { icon: '📰', text: 'Recent news — last 5 company headlines from the past 14 days' },
+              { icon: '🧮', text: 'Financial history — last 3 years of revenue, earnings, and cash flow reported by the company' },
+              { icon: '🤖', text: 'Claude AI — reads all of the above and writes the bull case, bear case, and verdict in plain English' },
+            ].map(({ icon, text }) => (
+              <li key={icon} style={{ ...muted, fontSize: '0.76rem', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                <span style={{ flexShrink: 0 }}>{icon}</span>
+                <span>{text}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
     </div>
   );
