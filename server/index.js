@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import suggestionsRouter from './routes/suggestions.js';
+import forecastRouter from './routes/forecast.js';
+import searchRouter from './routes/search.js';
 
 dotenv.config();
 
@@ -12,6 +14,8 @@ app.use(cors({ origin: ['http://localhost:5173', 'http://127.0.0.1:5173'] }));
 app.use(express.json());
 
 app.use('/api/suggestions', suggestionsRouter);
+app.use('/api/forecast', forecastRouter);
+app.use('/api/search', searchRouter);
 
 app.use((err, req, res, next) => {
   console.error('[Error]', err.message);
