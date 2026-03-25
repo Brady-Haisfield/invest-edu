@@ -1,12 +1,13 @@
 const VALID_RISK = ['low', 'medium', 'high'];
 const VALID_HOLD = ['short', 'medium', 'long'];
+const VALID_GOAL_MODES = ['just-starting', 'growing-wealth', 'approaching-retirement', 'already-retired'];
 const KNOWN_SECTORS = [
   'Technology', 'Healthcare', 'Finance', 'Energy',
   'Consumer', 'Utilities', 'Real Estate', 'Industrials', 'Materials',
 ];
 
 export function validateInputs(body) {
-  const { riskProfile, amount, holdPeriod, sectors } = body;
+  const { riskProfile, amount, holdPeriod, sectors, goalMode } = body;
 
   if (!VALID_RISK.includes(riskProfile)) {
     const err = new Error('Invalid risk profile. Must be low, medium, or high.');
@@ -31,5 +32,7 @@ export function validateInputs(body) {
     ? sectors.filter((s) => KNOWN_SECTORS.includes(s))
     : [];
 
-  return { riskProfile, amount: amt, holdPeriod, sectors: cleanSectors };
+  const cleanGoalMode = VALID_GOAL_MODES.includes(goalMode) ? goalMode : 'growing-wealth';
+
+  return { riskProfile, amount: amt, holdPeriod, sectors: cleanSectors, goalMode: cleanGoalMode };
 }

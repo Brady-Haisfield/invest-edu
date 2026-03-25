@@ -23,12 +23,18 @@ router.post('/', async (req, res, next) => {
 
     const cards = suggestions.map((s, i) => {
       const result = quoteResults[i];
+      const extra = {
+        type: s.type,
+        portfolioRole: s.portfolioRole,
+        retirementLens: s.retirementLens,
+        watchOut: s.watchOut,
+      };
       if (result.status === 'rejected') {
         console.warn(`[Yahoo] Quote failed for ${s.ticker}:`, result.reason?.message);
         // Still return the card with just Claude's data — market data shows as N/A
-        return { ticker: s.ticker, name: s.ticker, price: null, fiftyTwoWeekLow: null, fiftyTwoWeekHigh: null, peRatio: null, marketCap: null, sector: null, reasoning: s.reasoning };
+        return { ticker: s.ticker, name: s.ticker, price: null, fiftyTwoWeekLow: null, fiftyTwoWeekHigh: null, peRatio: null, marketCap: null, sector: null, reasoning: s.reasoning, ...extra };
       }
-      return { ...result.value, reasoning: s.reasoning };
+      return { ...result.value, reasoning: s.reasoning, ...extra };
     });
 
     res.json({ cards });

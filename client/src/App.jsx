@@ -17,6 +17,7 @@ export default function App() {
 
   // Home page state
   const [cards, setCards] = useState(null);
+  const [lastInputs, setLastInputs] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -57,6 +58,7 @@ export default function App() {
     setLoading(true);
     setError(null);
     setCards(null);
+    setLastInputs(formData);
     try {
       const result = await fetchSuggestions(formData);
       setCards(result);
@@ -102,25 +104,30 @@ export default function App() {
         {currentPage === 'home' && (
           <div className="layout-grid" style={{ gridTemplateColumns: '280px 1fr' }}>
             <div className="sidebar">
-              <h2 className="section-label" style={{ marginBottom: 'var(--space-5)' }}>Your Profile</h2>
+              <div style={{ marginBottom: 'var(--space-5)' }}>
+                <h2 className="section-label" style={{ marginBottom: 'var(--space-2)' }}>Your Profile</h2>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  Tell us where you are. We'll surface options that fit.
+                </p>
+              </div>
               <InputForm onSubmit={handleSubmit} disabled={loading} />
             </div>
 
             <div>
               {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
               {loading && <LoadingState />}
-              {cards && !loading && <StockGrid cards={cards} />}
+              {cards && !loading && <StockGrid cards={cards} inputs={lastInputs} />}
               {!loading && !error && !cards && (
                 <div style={{ padding: 'var(--space-8)', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
                   <h2 style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontSize: 28, lineHeight: 1.3, fontWeight: 400 }}>
-                    Find stocks that fit you
+                    Explore options that fit where you are
                   </h2>
                   <p style={{ fontSize: 14, color: 'var(--text-muted)', maxWidth: 420, lineHeight: 1.6 }}>
-                    Tell us your risk tolerance, how long you want to hold, and what sectors interest you. We'll match you with stocks that fit your profile — and explain why each one makes sense.
+                    Tell us your risk tolerance, how long you want to hold, and what sectors interest you. We'll suggest stocks, ETFs, REITs, and bond funds that fit your profile — and explain why each one makes sense.
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
                     {[
-                      'Matched to your risk tolerance and timeline',
+                      'Stocks, ETFs, REITs, and bond funds — matched to your profile',
                       'Real market prices pulled live',
                       'Plain-English explanations — no jargon',
                     ].map((text) => (

@@ -5,11 +5,31 @@ const SECTORS = [
   'Consumer', 'Utilities', 'Real Estate', 'Industrials', 'Materials',
 ];
 
+const RISK_DESCRIPTIONS = {
+  low:    'I want to protect what I have. Stability over growth.',
+  medium: "I'm comfortable with some ups and downs for better returns.",
+  high:   "I can handle big swings. I'm aiming for maximum growth.",
+};
+
+const GOAL_MODES = [
+  { value: 'just-starting',          label: 'Just Starting Out' },
+  { value: 'growing-wealth',         label: 'Growing Wealth' },
+  { value: 'approaching-retirement', label: 'Approaching Retirement' },
+  { value: 'already-retired',        label: 'Already Retired' },
+];
+
+function formatAmountPreview(raw) {
+  const n = Number(raw);
+  if (!raw || !Number.isFinite(n) || n <= 0) return null;
+  return `$${n.toLocaleString()} to invest`;
+}
+
 export default function InputForm({ onSubmit, disabled }) {
   const [riskProfile, setRiskProfile] = useState('medium');
   const [amount, setAmount] = useState('');
   const [holdPeriod, setHoldPeriod] = useState('long');
   const [sectors, setSectors] = useState([]);
+  const [goalMode, setGoalMode] = useState('growing-wealth');
   const [amtError, setAmtError] = useState('');
 
   function toggleSector(s) {
@@ -24,18 +44,20 @@ export default function InputForm({ onSubmit, disabled }) {
       return;
     }
     setAmtError('');
-    onSubmit({ riskProfile, amount: amt, holdPeriod, sectors });
+    onSubmit({ riskProfile, amount: amt, holdPeriod, sectors, goalMode });
   }
+
+  const amountPreview = formatAmountPreview(amount);
 
   return (
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
 
       {/* Risk Tolerance */}
       <div>
-        <span className="section-label" style={{ display: 'block', marginBottom: 'var(--space-2)' }}>
-          Risk Tolerance
+        <span className="section-label" style={{ display: 'block', marginBottom: 4 }}>
+          How much risk fits you?
         </span>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-2)' }}>
           {['low', 'medium', 'high'].map((r) => (
             <button
               type="button"
@@ -47,6 +69,12 @@ export default function InputForm({ onSubmit, disabled }) {
             </button>
           ))}
         </div>
+        <p style={{
+          fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5, margin: 0,
+          fontStyle: 'italic', minHeight: 16,
+        }}>
+          {RISK_DESCRIPTIONS[riskProfile]}
+        </p>
       </div>
 
       {/* Amount */}
@@ -91,6 +119,12 @@ export default function InputForm({ onSubmit, disabled }) {
         {amtError && (
           <p style={{ color: 'var(--accent-red)', fontSize: 11, marginTop: 6 }}>{amtError}</p>
         )}
+        {amountPreview && !amtError && (
+          <p style={{
+            fontSize: 11, color: 'var(--text-muted)', marginTop: 6,
+            fontFamily: "'DM Mono', monospace",
+          }}>{amountPreview}</p>
+        )}
       </div>
 
       {/* Hold Period */}
@@ -131,6 +165,39 @@ export default function InputForm({ onSubmit, disabled }) {
               {s}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* Goal Mode */}
+      <div>
+        <span className="section-label" style={{ display: 'block', marginBottom: 'var(--space-2)' }}>
+          Goal Mode
+        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          {GOAL_MODES.map(({ value, label }) => {
+            const active = goalMode === value;
+            return (
+              <button
+                type="button"
+                key={value}
+                onClick={() => setGoalMode(value)}
+                style={{
+                  textAlign: 'left',
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius)',
+                  border: `1px solid ${active ? 'var(--accent-green)' : 'var(--border)'}`,
+                  background: active ? 'var(--accent-green-dim)' : 'var(--bg-input)',
+                  color: active ? 'var(--accent-green-bright)' : 'var(--text-secondary)',
+                  fontSize: 12,
+                  fontWeight: active ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
 

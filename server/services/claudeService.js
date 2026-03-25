@@ -8,39 +8,73 @@ function getClient() {
 
 const SYSTEM_PROMPT = `
 You are a financial education assistant. Your role is to help users learn about investing concepts
-by suggesting example stocks that illustrate principles relevant to their stated risk tolerance,
-investment horizon, and interests. You are NOT providing financial advice. All suggestions are
-purely educational and for learning purposes only.
+by suggesting example stocks, ETFs, bond ETFs, and REITs that illustrate principles relevant to
+their stated risk tolerance, investment horizon, and interests. You are NOT providing financial
+advice. All suggestions are purely educational and for learning purposes only.
 
 When given a user's investing profile, respond with ONLY a valid JSON array — no markdown fences,
 no commentary, no extra keys. The array must contain exactly 5 objects with this shape:
 [
   {
     "ticker": "AAPL",
-    "reasoning": "Exactly 2 sentences. Sentence 1: what the company does in plain English (no jargon). Sentence 2: why it fits this investor's profile specifically — reference their risk tolerance, hold period, or sector interest."
+    "type": "stock",
+    "reasoning": "Exactly 2 sentences. Sentence 1: what the company/fund does in plain English (no jargon). Sentence 2: why it fits this investor's profile specifically — reference their risk tolerance, hold period, or sector interest.",
+    "portfolioRole": "core growth holding",
+    "retirementLens": {
+      "incomeRole": "Low",
+      "volatility": "Medium",
+      "liquidity": "High",
+      "complexity": "Low",
+      "retirementFit": "One plain sentence about how this fits a retirement-stage investor."
+    },
+    "watchOut": "One sentence under 20 words about the biggest risk for a retirement-stage investor."
   }
 ]
 
-Rules:
-- Use only real, currently-listed US stock tickers on NYSE or NASDAQ.
-- Do not suggest penny stocks, OTC-only securities, or ETFs.
+Field rules:
+- type must be exactly one of: "stock" | "etf" | "bond_etf" | "reit"
+- portfolioRole must be exactly one of: "core growth holding" | "income-oriented holding" | "defensive sector exposure" | "inflation-sensitive exposure" | "capital-preservation option" | "real estate income exposure" | "broad market exposure"
+- retirementLens.incomeRole, volatility, liquidity, complexity must each be exactly "Low", "Medium", or "High"
+- retirementLens.retirementFit must be one plain sentence
+- watchOut must be one sentence under 20 words
+
+General rules:
+- Use only real, currently-listed US tickers on NYSE or NASDAQ (stocks, ETFs, bond ETFs, or REITs).
+- Do not suggest penny stocks or OTC-only securities.
 - Vary suggestions across different sectors unless the user specifies otherwise.
 - Tailor complexity of reasoning to the risk profile:
-  low = stable blue-chips with simple dividend/stability explanations
-  medium = balanced mix of growth and stability
+  low = stable blue-chips, dividend ETFs, bond ETFs, or REITs with simple income/stability explanations
+  medium = balanced mix of growth stocks, broad market ETFs, and income options
   high = growth/speculative stocks with explanations of why higher volatility fits their horizon
+- If the risk profile is low OR the hold period is short, include at least 2 ETFs, bond ETFs, or REITs.
 - reasoning must be exactly 2 sentences. No more. No exceptions.
 `.trim();
 
+const GOAL_MODE_INSTRUCTIONS = {
+  'just-starting':          'This investor is just getting started — prefer broad market ETFs, simple blue-chip stocks, and low-complexity options. Avoid niche or speculative picks.',
+  'growing-wealth':         'This investor is in wealth-building mode — prefer equities and growth-oriented ETFs with solid fundamentals. Some diversification is welcome.',
+  'approaching-retirement': 'This investor is approaching retirement — bias strongly toward income, stability, bond ETFs, dividend stocks, and REITs. Limit high-volatility picks.',
+  'already-retired':        'This investor is already retired — prioritize capital preservation and income. Bonds, dividend ETFs, and REITs are ideal. Avoid growth stocks and speculative assets.',
+};
+
 function buildUserPrompt(inputs) {
+  const retirementNote = (inputs.riskProfile === 'low' || inputs.holdPeriod === 'short')
+    ? '\nNote: This investor prefers lower risk or a shorter horizon — lean toward capital preservation. Include at least 2 ETFs, bond ETFs, or REITs in your suggestions.'
+    : '';
+
+  const goalNote = GOAL_MODE_INSTRUCTIONS[inputs.goalMode] || '';
+
   return `
 User investing profile:
 - Risk tolerance: ${inputs.riskProfile}
 - Amount to invest: $${inputs.amount.toLocaleString()}
 - Hold period: ${inputs.holdPeriod}-term
+- Goal mode: ${inputs.goalMode}
 - Sectors of interest: ${inputs.sectors.length ? inputs.sectors.join(', ') : 'No preference'}
 
-Suggest 5 educational stock examples for this profile. Respond with JSON array only.
+Goal mode guidance: ${goalNote}
+${retirementNote}
+Suggest 5 educational investment examples for this profile. Respond with JSON array only.
 `.trim();
 }
 
@@ -192,7 +226,7 @@ export async function getForecast(stockData) {
 export async function getSuggestions(inputs) {
   const message = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
+    max_tokens: 2048,
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: buildUserPrompt(inputs) }],
   });
@@ -219,12 +253,21 @@ export async function getSuggestions(inputs) {
 
   // Validate and filter to well-formed suggestions
   const TICKER_RE = /^[A-Z]{1,5}$/;
-  return parsed.filter(
-    (s) =>
-      s &&
-      typeof s.ticker === 'string' &&
-      TICKER_RE.test(s.ticker) &&
-      typeof s.reasoning === 'string' &&
-      s.reasoning.length > 0
-  );
+  return parsed
+    .filter(
+      (s) =>
+        s &&
+        typeof s.ticker === 'string' &&
+        TICKER_RE.test(s.ticker) &&
+        typeof s.reasoning === 'string' &&
+        s.reasoning.length > 0
+    )
+    .map((s) => ({
+      ticker: s.ticker,
+      type: s.type || 'stock',
+      reasoning: s.reasoning,
+      portfolioRole: s.portfolioRole || null,
+      retirementLens: s.retirementLens || null,
+      watchOut: s.watchOut || null,
+    }));
 }
