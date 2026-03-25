@@ -73,7 +73,7 @@ POST /api/forecast  { ticker }
                                        #   profile, quote, metric, financials-reported,
                                        #   candle (monthly 2yr), earnings, company-news
   → claudeService.getForecast()        # returns { keyMetrics, verdict, bull, bear, educationalNote }
-  → { forecast, ticker, companyName, quote }
+  → { forecast, ticker, companyName, quote, monthlyCloses }   # monthlyCloses = last 12 monthly closes
 ```
 
 **Search (autocomplete):**
@@ -90,8 +90,10 @@ GET /api/search?q=QUERY
 - **Claude returns JSON only** — both prompts instruct Claude to return raw JSON (no markdown fences). Responses are fence-stripped and validated before use; malformed responses throw a `502`.
 - **Finnhub free tier limits** — PE ratio is not available (always `null`). The `yahoo-finance2` package is still a dependency but unused (replaced by Finnhub after rate-limiting issues).
 - **XBRL concept name variance** — `forecastService.js` tries multiple candidate XBRL concept names (e.g. `Revenues`, `RevenueFromContractWithCustomerExcludingAssessedTax`) when extracting reported financials, since filers use different tags.
-- **CORS** — Express whitelists only `localhost:5173`. Since Vite proxies all `/api` calls, this isn't an issue in practice even if Vite shifts ports.
+- **CORS** — Express whitelists `localhost:5173` and `127.0.0.1:5173`. Vite proxies all `/api` calls so port drift (Vite falling back to 5174/5175 when 5173 is taken) doesn't break API calls, but the client URL in the browser must match.
 - **Forecast data trimming** — `forecastService.js` aggressively trims Finnhub responses before sending to Claude (monthly closes array only, 3 annual periods, 5 news headlines) to stay under ~2000 input tokens.
+- **Chart.js used directly** — `ForecastChart.jsx` imports from `chart.js` and manages a canvas ref manually. `react-chartjs-2` is installed as a dependency but not used. Chart.js controllers (`LineController`) must be explicitly registered alongside elements; omitting them throws "X is not a registered controller". Use `Chart.getChart(canvas)` to destroy an existing instance before creating a new one — required in React StrictMode which double-invokes effects.
+- **Forecast prompt language rules** — the `FORECAST_SYSTEM_PROMPT` enforces plain-English output (max 20-word sentences, jargon defined inline) for a beginner audience. Keep this tone when modifying the prompt.
 
 ### Styling conventions
 
