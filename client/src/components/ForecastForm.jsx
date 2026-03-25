@@ -63,20 +63,13 @@ export default function ForecastForm({ onSubmit, disabled }) {
     onSubmit(val);
   }
 
-  const label = {
-    display: 'block',
-    fontSize: '0.78rem',
-    fontWeight: 600,
-    letterSpacing: '0.06em',
-    textTransform: 'uppercase',
-    color: 'var(--text-muted)',
-    marginBottom: '10px',
-  };
-
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.6rem' }}>
+    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+
       <div ref={wrapperRef} style={{ position: 'relative' }}>
-        <label style={label} htmlFor="ticker">Stock Ticker or Company Name</label>
+        <label className="section-label" htmlFor="ticker" style={{ display: 'block', marginBottom: 'var(--space-2)' }}>
+          Stock Ticker or Company Name
+        </label>
         <input
           id="ticker"
           type="text"
@@ -86,17 +79,10 @@ export default function ForecastForm({ onSubmit, disabled }) {
           maxLength={30}
           disabled={disabled}
           autoComplete="off"
+          className="ticker-input"
           style={{
-            width: '100%',
-            padding: '10px 14px',
-            background: 'var(--bg-input)',
-            border: `1px solid ${tickerError ? 'var(--accent-red)' : 'var(--border)'}`,
-            borderRadius: showDropdown ? 'var(--radius-sm) var(--radius-sm) 0 0' : 'var(--radius-sm)',
-            color: 'var(--text-primary)',
-            fontSize: '1rem',
-            outline: 'none',
-            transition: 'border-color 0.15s',
-            boxSizing: 'border-box',
+            borderColor: tickerError ? 'var(--accent-red)' : undefined,
+            borderRadius: showDropdown ? 'var(--radius) var(--radius) 0 0' : undefined,
           }}
           onFocus={(e) => {
             e.target.style.borderColor = 'var(--border-focus)';
@@ -114,7 +100,7 @@ export default function ForecastForm({ onSubmit, disabled }) {
             background: 'var(--bg-card)',
             border: '1px solid var(--border-focus)',
             borderTop: 'none',
-            borderRadius: '0 0 var(--radius-sm) var(--radius-sm)',
+            borderRadius: '0 0 var(--radius) var(--radius)',
             zIndex: 100,
             overflow: 'hidden',
           }}>
@@ -127,60 +113,49 @@ export default function ForecastForm({ onSubmit, disabled }) {
                   width: '100%',
                   padding: '9px 14px',
                   background: 'transparent',
-                  border: 'none',
                   borderBottom: i < suggestions.length - 1 ? '1px solid var(--border)' : 'none',
                   color: 'var(--text-primary)',
-                  fontSize: '0.88rem',
+                  fontSize: 12,
                   textAlign: 'left',
-                  cursor: 'pointer',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  gap: '8px',
+                  gap: 8,
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-input)'}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                <span style={{ color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
-                <span style={{ color: 'var(--accent-blue)', fontWeight: 700, flexShrink: 0 }}>{s.ticker}</span>
+                <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {s.name}
+                </span>
+                <span className="mono" style={{ color: 'var(--accent-green-bright)', fontSize: 11, flexShrink: 0 }}>
+                  {s.ticker}
+                </span>
               </button>
             ))}
           </div>
         )}
 
         {tickerError && (
-          <p style={{ color: 'var(--accent-red)', fontSize: '0.8rem', marginTop: '6px' }}>{tickerError}</p>
+          <p style={{ color: 'var(--accent-red)', fontSize: 11, marginTop: 6 }}>{tickerError}</p>
         )}
       </div>
 
-      <button
-        type="submit"
-        disabled={disabled}
-        style={{
-          padding: '13px',
-          borderRadius: 'var(--radius)',
-          border: 'none',
-          background: disabled ? 'var(--border)' : 'var(--accent-blue)',
-          color: disabled ? 'var(--text-muted)' : '#fff',
-          fontSize: '1rem',
-          fontWeight: 600,
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          transition: 'background 0.2s',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '8px',
-        }}
-      >
+      <button type="submit" disabled={disabled} className="btn-primary">
         {disabled ? (
-          <>
-            <span style={{ display: 'inline-block', width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTop: '2px solid white', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+          <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <span style={{
+              display: 'inline-block', width: 14, height: 14,
+              border: '2px solid rgba(255,255,255,0.3)',
+              borderTop: '2px solid white',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite',
+            }} />
             Generating Forecast...
-          </>
+          </span>
         ) : 'Generate Forecast'}
       </button>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </form>
   );
 }

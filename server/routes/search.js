@@ -15,6 +15,7 @@ router.get('/', async (req, res, next) => {
     // Filter to common stock only, limit to 8
     const results = (data.result ?? [])
       .filter((r) => r.type === 'Common Stock')
+      .filter((r) => !r.symbol.includes('.'))
       .slice(0, 8)
       .map((r) => ({ ticker: r.symbol, name: r.description }));
     res.json({ results });

@@ -21,23 +21,17 @@ function RangeBar({ low, high, price }) {
   const pct = Math.min(100, Math.max(0, ((price - low) / (high - low)) * 100));
 
   return (
-    <div style={{ marginTop: '4px' }}>
-      <div style={{
-        position: 'relative',
-        height: 6,
-        borderRadius: 3,
-        background: 'var(--border)',
-        overflow: 'visible',
-      }}>
+    <div style={{ marginTop: 4 }}>
+      <div style={{ position: 'relative', height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'visible' }}>
         <div style={{
           position: 'absolute',
           left: `${pct}%`,
           top: '50%',
           transform: 'translate(-50%, -50%)',
-          width: 12,
-          height: 12,
+          width: 10,
+          height: 10,
           borderRadius: '50%',
-          background: 'var(--accent-blue)',
+          background: 'var(--accent-green-bright)',
           border: '2px solid var(--bg-card)',
           zIndex: 1,
         }} />
@@ -46,12 +40,12 @@ function RangeBar({ low, high, price }) {
           left: 0, right: 0, top: 0, bottom: 0,
           background: `linear-gradient(to right, var(--accent-green) ${pct}%, var(--border) ${pct}%)`,
           borderRadius: 3,
-          opacity: 0.4,
+          opacity: 0.3,
         }} />
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 10, color: 'var(--text-muted)' }}>
         <span>{formatPrice(low)}</span>
-        <span style={{ fontSize: '0.7rem' }}>52-week range</span>
+        <span>52-week range</span>
         <span>{formatPrice(high)}</span>
       </div>
     </div>
@@ -62,84 +56,57 @@ export default function StockCard({ card }) {
   const { ticker, name, price, fiftyTwoWeekLow, fiftyTwoWeekHigh, peRatio, marketCap, sector, reasoning } = card;
 
   return (
-    <div style={{
-      background: 'var(--bg-card)',
-      border: '1px solid var(--border)',
-      borderRadius: 'var(--radius)',
-      padding: '20px',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '14px',
-      transition: 'background 0.15s, box-shadow 0.15s',
-      boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
-    }}
-    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-card-hover)'; e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.4)'; }}
-    onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-card)'; e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.3)'; }}
+    <div
+      className="card"
+      style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', transition: 'background 0.15s' }}
+      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+      onMouseLeave={(e) => e.currentTarget.style.background = 'var(--bg-card)'}
     >
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+      <div className="stock-header">
         <div>
-          <span style={{
-            display: 'inline-block',
-            background: 'rgba(79,142,247,0.15)',
-            color: 'var(--accent-blue)',
-            border: '1px solid rgba(79,142,247,0.3)',
-            borderRadius: '6px',
-            padding: '2px 10px',
-            fontSize: '0.85rem',
-            fontWeight: 700,
-            letterSpacing: '0.04em',
-            marginBottom: '6px',
-          }}>{ticker}</span>
-          <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>{name}</div>
+          <div className="ticker-badge" style={{ display: 'inline-block', marginBottom: 6 }}>{ticker}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{name}</div>
         </div>
         {sector && (
           <span style={{
             flexShrink: 0,
-            background: 'rgba(52,211,153,0.1)',
-            color: 'var(--accent-green)',
-            border: '1px solid rgba(52,211,153,0.25)',
-            borderRadius: '12px',
+            background: 'var(--accent-green-dim)',
+            color: 'var(--accent-green-bright)',
+            border: '1px solid var(--accent-green)',
+            borderRadius: 100,
             padding: '3px 10px',
-            fontSize: '0.72rem',
-            fontWeight: 500,
+            fontSize: 10,
           }}>{sector}</span>
         )}
       </div>
 
       {/* Price */}
       <div>
-        <div style={{ fontSize: '1.6rem', fontWeight: 700 }}>{formatPrice(price)}</div>
+        <div className="price-large">{formatPrice(price)}</div>
         <RangeBar low={fiftyTwoWeekLow} high={fiftyTwoWeekHigh} price={price} />
       </div>
 
       {/* Stats */}
       <div style={{
         display: 'flex',
-        gap: '0',
         borderTop: '1px solid var(--border)',
         borderBottom: '1px solid var(--border)',
-        padding: '10px 0',
+        padding: 'var(--space-3) 0',
       }}>
         <div style={{ flex: 1, textAlign: 'center' }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>P/E Ratio</div>
-          <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>{formatPE(peRatio)}</div>
+          <div className="section-label" style={{ marginBottom: 3 }}>P/E</div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>{formatPE(peRatio)}</div>
         </div>
         <div style={{ width: 1, background: 'var(--border)' }} />
         <div style={{ flex: 1, textAlign: 'center' }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>Market Cap</div>
-          <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>{formatMarketCap(marketCap)}</div>
+          <div className="section-label" style={{ marginBottom: 3 }}>Mkt Cap</div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>{formatMarketCap(marketCap)}</div>
         </div>
       </div>
 
       {/* Reasoning */}
-      <p style={{
-        fontSize: '0.85rem',
-        color: 'var(--text-muted)',
-        fontStyle: 'italic',
-        lineHeight: 1.6,
-        margin: 0,
-      }}>
+      <p style={{ fontSize: 12, color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.6, margin: 0 }}>
         {reasoning}
       </p>
     </div>

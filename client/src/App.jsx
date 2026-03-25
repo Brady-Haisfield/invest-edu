@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { fetchSuggestions } from './api/suggestions.js';
 import { fetchForecast } from './api/forecast.js';
 import DisclaimerBanner from './components/DisclaimerBanner.jsx';
@@ -25,10 +25,33 @@ export default function App() {
   const [forecastLoading, setForecastLoading] = useState(false);
   const [forecastError, setForecastError] = useState(null);
   const [forecastTicker, setForecastTicker] = useState('');
+  const [forecastSearchTicker, setForecastSearchTicker] = useState('');
   const [forecastCompanyName, setForecastCompanyName] = useState('');
   const [forecastQuote, setForecastQuote] = useState(null);
   const [forecastStockPE, setForecastStockPE] = useState(null);
   const [forecastSectorPE, setForecastSectorPE] = useState(null);
+
+  // Ref-based handshake: decouple loading animation from API response timing
+  const pendingResultRef = useRef(null);
+  const animReadyRef = useRef(false);
+
+  function applyResult(result) {
+    setForecast(result.forecast);
+    setForecastTicker(result.ticker);
+    setForecastCompanyName(result.companyName);
+    setForecastQuote(result.quote ?? null);
+    setForecastStockPE(result.stockPE ?? null);
+    setForecastSectorPE(result.sectorAvgPE ?? null);
+    setForecastLoading(false);
+  }
+
+  function handleAnimationReady() {
+    animReadyRef.current = true;
+    if (pendingResultRef.current) {
+      applyResult(pendingResultRef.current);
+      pendingResultRef.current = null;
+    }
+  }
 
   async function handleSubmit(formData) {
     setLoading(true);
@@ -45,6 +68,9 @@ export default function App() {
   }
 
   async function handleForecast(ticker) {
+    pendingResultRef.current = null;
+    animReadyRef.current = false;
+    setForecastSearchTicker(ticker);
     setForecastLoading(true);
     setForecastError(null);
     setForecast(null);
@@ -52,108 +78,67 @@ export default function App() {
     setForecastSectorPE(null);
     try {
       const result = await fetchForecast(ticker);
-      setForecast(result.forecast);
-      setForecastTicker(result.ticker);
-      setForecastCompanyName(result.companyName);
-      setForecastQuote(result.quote ?? null);
-      setForecastStockPE(result.stockPE ?? null);
-      setForecastSectorPE(result.sectorAvgPE ?? null);
+      if (animReadyRef.current) {
+        applyResult(result);
+      } else {
+        pendingResultRef.current = result;
+      }
     } catch (err) {
       setForecastError(err.message);
-    } finally {
       setForecastLoading(false);
     }
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      padding: '2rem 1.5rem',
-      maxWidth: 1100,
-      margin: '0 auto',
-    }}>
+    <div style={{ minHeight: '100vh' }}>
       {/* Header */}
-      <header style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{
-          fontSize: '2rem',
-          fontWeight: 700,
-          letterSpacing: '-0.5px',
-          marginBottom: '4px',
-        }}>
-          <span style={{ color: 'var(--accent-blue)' }}>Invest</span>Edu
-        </h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-          Learn about investing by exploring stocks matched to your profile
-        </p>
-      </header>
-
       <Nav currentPage={currentPage} onNavigate={setCurrentPage} />
 
       <DisclaimerBanner />
 
-      {/* Home Page */}
-      {currentPage === 'home' && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: cards || loading ? '320px 1fr' : '400px',
-          gap: '2rem',
-          alignItems: 'start',
-        }}>
-          <div style={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
-            padding: '24px',
-            boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
-          }}>
-            <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1.5rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Your Profile
-            </h2>
-            <InputForm onSubmit={handleSubmit} disabled={loading} />
-          </div>
+      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 var(--space-6) var(--space-8)' }}>
 
-          {(loading || error || cards) && (
-            <div>
-              {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
-              {loading && <LoadingState />}
-              {cards && !loading && <StockGrid cards={cards} />}
+        {/* Home Page */}
+        {currentPage === 'home' && (
+          <div
+            className="layout-grid"
+            style={{ gridTemplateColumns: cards || loading ? '320px 1fr' : '400px' }}
+          >
+            <div className="sidebar">
+              <h2 className="section-label" style={{ marginBottom: 'var(--space-5)' }}>Your Profile</h2>
+              <InputForm onSubmit={handleSubmit} disabled={loading} />
             </div>
-          )}
-        </div>
-      )}
 
-      {/* Forecast Page */}
-      {currentPage === 'forecast' && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: forecastLoading || forecast ? '320px 1fr' : '400px',
-          gap: '2rem',
-          alignItems: 'start',
-        }}>
-          <div style={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
-            padding: '24px',
-            boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
-          }}>
-            <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1.5rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Stock Forecast
-            </h2>
-            <ForecastForm onSubmit={handleForecast} disabled={forecastLoading} />
-            {forecast && forecastQuote && forecast.bull?.priceTargetRange && forecast.bear?.downsideScenario && (
-              <ForecastChart
-                currentPrice={forecastQuote.price}
-                bullMid={Math.round((forecast.bull.priceTargetRange.low + forecast.bull.priceTargetRange.high) / 2)}
-                bearMid={Math.round((forecast.bear.downsideScenario.low + forecast.bear.downsideScenario.high) / 2)}
-              />
+            {(loading || error || cards) && (
+              <div>
+                {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
+                {loading && <LoadingState />}
+                {cards && !loading && <StockGrid cards={cards} />}
+              </div>
             )}
           </div>
+        )}
 
-          {(forecastLoading || forecastError || forecast) && (
+        {/* Forecast Page */}
+        {currentPage === 'forecast' && (
+          <div className="layout-grid" style={{ gridTemplateColumns: '320px 1fr' }}>
+            <div className="sidebar">
+              <h2 className="section-label" style={{ marginBottom: 'var(--space-5)' }}>Stock Forecast</h2>
+              <ForecastForm onSubmit={handleForecast} disabled={forecastLoading} />
+              {forecast && forecastQuote && forecast.bull?.priceTargetRange && forecast.bear?.downsideScenario && (
+                <div style={{ marginTop: 'var(--space-5)' }}>
+                  <ForecastChart
+                    currentPrice={forecastQuote.price}
+                    bullMid={Math.round((forecast.bull.priceTargetRange.low + forecast.bull.priceTargetRange.high) / 2)}
+                    bearMid={Math.round((forecast.bear.downsideScenario.low + forecast.bear.downsideScenario.high) / 2)}
+                  />
+                </div>
+              )}
+            </div>
+
             <div>
               {forecastError && <ErrorBanner message={forecastError} onDismiss={() => setForecastError(null)} />}
-              {forecastLoading && <ForecastLoadingState />}
+              {forecastLoading && <ForecastLoadingState ticker={forecastSearchTicker} onStep4Active={handleAnimationReady} />}
               {forecast && !forecastLoading && (
                 <ForecastResult
                   forecast={forecast}
@@ -164,10 +149,33 @@ export default function App() {
                   sectorAvgPE={forecastSectorPE}
                 />
               )}
+              {!forecastLoading && !forecastError && !forecast && (
+                <div style={{ padding: 'var(--space-8)', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+                  <h2 style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontSize: 28, lineHeight: 1.3, fontWeight: 400 }}>
+                    Enter a ticker to build your forecast
+                  </h2>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', maxWidth: 420, lineHeight: 1.6 }}>
+                    We pull live market data, run two valuation models, and generate a plain-English bull and bear case — in about 15 seconds.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
+                    {[
+                      'Live market data from Finnhub — price, earnings, margins, and more',
+                      'Two valuation models calculated before the AI sees anything',
+                      "Historical analog scenarios from this stock's real past",
+                    ].map((text) => (
+                      <div key={text} style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', marginTop: 6, flexShrink: 0 }} />
+                        <span style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }

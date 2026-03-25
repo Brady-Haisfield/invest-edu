@@ -5,29 +5,6 @@ const SECTORS = [
   'Consumer', 'Utilities', 'Real Estate', 'Industrials', 'Materials',
 ];
 
-const toggleStyle = (active) => ({
-  padding: '8px 20px',
-  borderRadius: '20px',
-  border: `1px solid ${active ? 'var(--accent-blue)' : 'var(--border)'}`,
-  background: active ? 'rgba(79,142,247,0.15)' : 'var(--bg-input)',
-  color: active ? 'var(--accent-blue)' : 'var(--text-muted)',
-  fontWeight: active ? 600 : 400,
-  fontSize: '0.9rem',
-  cursor: 'pointer',
-  transition: 'all 0.15s',
-});
-
-const sectorChipStyle = (active) => ({
-  padding: '5px 12px',
-  borderRadius: '16px',
-  border: `1px solid ${active ? 'var(--accent-blue)' : 'var(--border)'}`,
-  background: active ? 'rgba(79,142,247,0.12)' : 'var(--bg-input)',
-  color: active ? 'var(--accent-blue)' : 'var(--text-muted)',
-  fontSize: '0.8rem',
-  cursor: 'pointer',
-  transition: 'all 0.15s',
-});
-
 export default function InputForm({ onSubmit, disabled }) {
   const [riskProfile, setRiskProfile] = useState('medium');
   const [amount, setAmount] = useState('');
@@ -50,25 +27,22 @@ export default function InputForm({ onSubmit, disabled }) {
     onSubmit({ riskProfile, amount: amt, holdPeriod, sectors });
   }
 
-  const label = {
-    display: 'block',
-    fontSize: '0.78rem',
-    fontWeight: 600,
-    letterSpacing: '0.06em',
-    textTransform: 'uppercase',
-    color: 'var(--text-muted)',
-    marginBottom: '10px',
-  };
-
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.6rem' }}>
+    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
 
-      {/* Risk Profile */}
+      {/* Risk Tolerance */}
       <div>
-        <span style={label}>Risk Tolerance</span>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <span className="section-label" style={{ display: 'block', marginBottom: 'var(--space-2)' }}>
+          Risk Tolerance
+        </span>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
           {['low', 'medium', 'high'].map((r) => (
-            <button type="button" key={r} style={toggleStyle(riskProfile === r)} onClick={() => setRiskProfile(r)}>
+            <button
+              type="button"
+              key={r}
+              className={`btn-toggle${riskProfile === r ? ' active' : ''}`}
+              onClick={() => setRiskProfile(r)}
+            >
               {r.charAt(0).toUpperCase() + r.slice(1)}
             </button>
           ))}
@@ -77,11 +51,14 @@ export default function InputForm({ onSubmit, disabled }) {
 
       {/* Amount */}
       <div>
-        <label style={label} htmlFor="amount">Amount to Invest</label>
-        <div style={{ position: 'relative', display: 'inline-block', width: '100%' }}>
+        <label className="section-label" htmlFor="amount" style={{ display: 'block', marginBottom: 'var(--space-2)' }}>
+          Amount to Invest
+        </label>
+        <div style={{ position: 'relative' }}>
           <span style={{
-            position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)',
-            color: 'var(--text-muted)', fontSize: '1rem', pointerEvents: 'none',
+            position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)',
+            color: 'var(--text-muted)', fontSize: 14, pointerEvents: 'none',
+            fontFamily: "'DM Mono', monospace",
           }}>$</span>
           <input
             id="amount"
@@ -90,31 +67,34 @@ export default function InputForm({ onSubmit, disabled }) {
             step="1"
             value={amount}
             onChange={(e) => { setAmount(e.target.value); setAmtError(''); }}
-            placeholder="e.g. 5000"
+            placeholder="5000"
+            className="ticker-input"
             style={{
-              width: '100%',
-              padding: '10px 14px 10px 28px',
-              background: 'var(--bg-input)',
-              border: `1px solid ${amtError ? 'var(--accent-red)' : 'var(--border)'}`,
-              borderRadius: 'var(--radius-sm)',
-              color: 'var(--text-primary)',
-              fontSize: '1rem',
-              outline: 'none',
-              transition: 'border-color 0.15s',
+              paddingLeft: 28,
+              borderColor: amtError ? 'var(--accent-red)' : undefined,
             }}
             onFocus={(e) => e.target.style.borderColor = 'var(--border-focus)'}
             onBlur={(e) => e.target.style.borderColor = amtError ? 'var(--accent-red)' : 'var(--border)'}
           />
         </div>
-        {amtError && <p style={{ color: 'var(--accent-red)', fontSize: '0.8rem', marginTop: '6px' }}>{amtError}</p>}
+        {amtError && (
+          <p style={{ color: 'var(--accent-red)', fontSize: 11, marginTop: 6 }}>{amtError}</p>
+        )}
       </div>
 
       {/* Hold Period */}
       <div>
-        <span style={label}>Hold Period</span>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <span className="section-label" style={{ display: 'block', marginBottom: 'var(--space-2)' }}>
+          Hold Period
+        </span>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
           {[['short', '< 1 year'], ['medium', '1–5 years'], ['long', '5+ years']].map(([val, display]) => (
-            <button type="button" key={val} style={toggleStyle(holdPeriod === val)} onClick={() => setHoldPeriod(val)}>
+            <button
+              type="button"
+              key={val}
+              className={`btn-toggle${holdPeriod === val ? ' active' : ''}`}
+              onClick={() => setHoldPeriod(val)}
+            >
               {display}
             </button>
           ))}
@@ -123,10 +103,20 @@ export default function InputForm({ onSubmit, disabled }) {
 
       {/* Sectors */}
       <div>
-        <span style={label}>Sectors of Interest <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></span>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+        <span className="section-label" style={{ display: 'block', marginBottom: 'var(--space-2)' }}>
+          Sectors{' '}
+          <span style={{ textTransform: 'none', letterSpacing: 0, fontFamily: "'DM Sans', sans-serif", fontSize: 11 }}>
+            (optional)
+          </span>
+        </span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
           {SECTORS.map((s) => (
-            <button type="button" key={s} style={sectorChipStyle(sectors.includes(s))} onClick={() => toggleSector(s)}>
+            <button
+              type="button"
+              key={s}
+              className={`chip${sectors.includes(s) ? ' active' : ''}`}
+              onClick={() => toggleSector(s)}
+            >
               {s}
             </button>
           ))}
@@ -134,34 +124,21 @@ export default function InputForm({ onSubmit, disabled }) {
       </div>
 
       {/* Submit */}
-      <button
-        type="submit"
-        disabled={disabled}
-        style={{
-          padding: '13px',
-          borderRadius: 'var(--radius)',
-          border: 'none',
-          background: disabled ? 'var(--border)' : 'var(--accent-blue)',
-          color: disabled ? 'var(--text-muted)' : '#fff',
-          fontSize: '1rem',
-          fontWeight: 600,
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          transition: 'background 0.2s, opacity 0.2s',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '8px',
-        }}
-      >
+      <button type="submit" disabled={disabled} className="btn-primary">
         {disabled ? (
-          <>
-            <span style={{ display: 'inline-block', width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTop: '2px solid white', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-            Analyzing your profile...
-          </>
+          <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <span style={{
+              display: 'inline-block', width: 14, height: 14,
+              border: '2px solid rgba(255,255,255,0.3)',
+              borderTop: '2px solid white',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite',
+            }} />
+            Analyzing...
+          </span>
         ) : 'Get My Educational Picks'}
       </button>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </form>
   );
 }
