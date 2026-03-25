@@ -78,7 +78,16 @@ The object must have exactly this shape:
     "downsideScenario": { "low": 90, "high": 120 }
   },
   "educationalNote": "2-3 sentences explaining what investing concept this analysis illustrates. Keep it simple and beginner-friendly.",
-  "confidenceScore": 72
+  "confidenceScore": 72,
+  "historicalScenarios": [
+    {
+      "year": 2018,
+      "situation": "One sentence — what was happening with this stock and the market then.",
+      "similarity": "One sentence — why that period looks like today.",
+      "outcome": "+34% over 12 months",
+      "lesson": "One sentence — what a beginner investor can learn from this."
+    }
+  ]
 }
 
 Rules:
@@ -90,6 +99,7 @@ Rules:
 - Include exactly 3 bull drivers and 3 bear risks, each a single sentence.
 - If certain data is missing, say so briefly and reason from what is available.
 - Every explanation must reference a specific data point from the input.
+- Find 2-3 real historical periods where this specific stock faced similar conditions to today — similar valuation level, similar growth rate, similar market environment. Use your training knowledge of the stock's actual history. Be specific about years and real numbers. Write everything in plain English under 20 words per field.
 `.trim();
 
 function buildForecastUserPrompt(stockData) {

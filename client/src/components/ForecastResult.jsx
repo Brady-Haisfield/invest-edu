@@ -26,7 +26,7 @@ const sectionLabel = {
 const muted = { color: 'var(--text-muted)', fontSize: '0.82rem', lineHeight: 1.55 };
 
 export default function ForecastResult({ forecast, ticker, companyName, quote, stockPE, sectorAvgPE }) {
-  const { keyMetrics, verdict, bull, bear, educationalNote } = forecast;
+  const { keyMetrics, verdict, bull, bear, educationalNote, historicalScenarios } = forecast;
   const [noteOpen, setNoteOpen] = useState(false);
   const [howOpen, setHowOpen] = useState(false);
   const [hoveredIdx, setHoveredIdx] = useState(null);
@@ -297,6 +297,76 @@ export default function ForecastResult({ forecast, ticker, companyName, quote, s
         </div>
 
       </div>
+
+      {/* ── Historical scenarios ── */}
+      {historicalScenarios?.length > 0 && (
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px' }}>
+          <p style={{ ...sectionLabel, color: 'var(--text-muted)', marginBottom: '10px' }}>
+            When This Happened Before
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {historicalScenarios.map((s, i) => {
+              const outcomeColor = s.outcome?.startsWith('+')
+                ? 'var(--accent-green)'
+                : s.outcome?.startsWith('-')
+                  ? 'var(--accent-red)'
+                  : 'var(--text-muted)';
+              return (
+                <div key={i} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '10px 14px',
+                }}>
+                  <span style={{
+                    background: 'rgba(79,142,247,0.15)',
+                    color: 'var(--accent-blue)',
+                    border: '1px solid rgba(79,142,247,0.3)',
+                    borderRadius: '20px',
+                    padding: '2px 10px',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    flexShrink: 0,
+                  }}>{s.year}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: '0.8rem', lineHeight: 1.4, margin: 0, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {s.situation}
+                    </p>
+                    <p style={{ ...muted, fontSize: '0.76rem', margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {s.similarity}
+                    </p>
+                  </div>
+                  <span style={{
+                    color: outcomeColor,
+                    fontWeight: 700,
+                    fontSize: '0.95rem',
+                    flexShrink: 0,
+                    maxWidth: '200px',
+                    minWidth: '90px',
+                    textAlign: 'right',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}>{s.outcome}</span>
+                  <p style={{
+                    ...muted,
+                    fontSize: '0.74rem',
+                    fontStyle: 'italic',
+                    margin: 0,
+                    flexShrink: 0,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    maxWidth: '150px',
+                    textAlign: 'right',
+                  }}>{s.lesson}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── Educational note toggle ── */}
       {educationalNote && (
