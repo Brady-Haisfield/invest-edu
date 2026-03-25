@@ -27,7 +27,8 @@ export default function App() {
   const [forecastTicker, setForecastTicker] = useState('');
   const [forecastCompanyName, setForecastCompanyName] = useState('');
   const [forecastQuote, setForecastQuote] = useState(null);
-  const [forecastMonthlyCloses, setForecastMonthlyCloses] = useState(null);
+  const [forecastStockPE, setForecastStockPE] = useState(null);
+  const [forecastSectorPE, setForecastSectorPE] = useState(null);
 
   async function handleSubmit(formData) {
     setLoading(true);
@@ -47,14 +48,16 @@ export default function App() {
     setForecastLoading(true);
     setForecastError(null);
     setForecast(null);
-    setForecastMonthlyCloses(null);
+    setForecastStockPE(null);
+    setForecastSectorPE(null);
     try {
       const result = await fetchForecast(ticker);
       setForecast(result.forecast);
       setForecastTicker(result.ticker);
       setForecastCompanyName(result.companyName);
       setForecastQuote(result.quote ?? null);
-      setForecastMonthlyCloses(result.monthlyCloses ?? null);
+      setForecastStockPE(result.stockPE ?? null);
+      setForecastSectorPE(result.sectorAvgPE ?? null);
     } catch (err) {
       setForecastError(err.message);
     } finally {
@@ -140,7 +143,6 @@ export default function App() {
             <ForecastForm onSubmit={handleForecast} disabled={forecastLoading} />
             {forecast && forecastQuote && forecast.bull?.priceTargetRange && forecast.bear?.downsideScenario && (
               <ForecastChart
-                monthlyCloses={forecastMonthlyCloses}
                 currentPrice={forecastQuote.price}
                 bullMid={Math.round((forecast.bull.priceTargetRange.low + forecast.bull.priceTargetRange.high) / 2)}
                 bearMid={Math.round((forecast.bear.downsideScenario.low + forecast.bear.downsideScenario.high) / 2)}
@@ -158,6 +160,8 @@ export default function App() {
                   ticker={forecastTicker}
                   companyName={forecastCompanyName}
                   quote={forecastQuote}
+                  stockPE={forecastStockPE}
+                  sectorAvgPE={forecastSectorPE}
                 />
               )}
             </div>

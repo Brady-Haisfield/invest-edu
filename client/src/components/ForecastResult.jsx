@@ -25,10 +25,11 @@ const sectionLabel = {
 
 const muted = { color: 'var(--text-muted)', fontSize: '0.82rem', lineHeight: 1.55 };
 
-export default function ForecastResult({ forecast, ticker, companyName, quote }) {
+export default function ForecastResult({ forecast, ticker, companyName, quote, stockPE, sectorAvgPE }) {
   const { keyMetrics, verdict, bull, bear, educationalNote } = forecast;
   const [noteOpen, setNoteOpen] = useState(false);
   const [howOpen, setHowOpen] = useState(false);
+  const [hoveredIdx, setHoveredIdx] = useState(null);
 
   const lean = verdict?.lean?.toLowerCase() ?? 'neutral';
   const leanStyle = LEAN_COLORS[lean] ?? LEAN_COLORS.neutral;
@@ -91,21 +92,116 @@ export default function ForecastResult({ forecast, ticker, companyName, quote })
       </p>
 
       {/* ── Metrics strip ── */}
-      {keyMetrics?.length > 0 && (
+      {(keyMetrics?.length > 0 || (stockPE != null && sectorAvgPE != null)) && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-          {keyMetrics.map((m, i) => (
-            <span key={i} style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border)',
-              borderRadius: '20px',
-              padding: '4px 13px',
-              fontSize: '0.8rem',
-              whiteSpace: 'nowrap',
-            }}>
-              <span style={{ color: 'var(--accent-blue)', fontWeight: 700 }}>{m.value}</span>
-              <span style={{ color: 'var(--text-muted)', marginLeft: '5px' }}>{m.label}</span>
-            </span>
-          ))}
+          {keyMetrics?.map((m, i) => {
+            const parenIdx = m.label.indexOf('(');
+            const shortLabel = parenIdx > -1 ? m.label.slice(0, parenIdx).trim() : m.label;
+            const definition = parenIdx > -1 ? m.label.slice(parenIdx + 1).replace(/\)$/, '').trim() : null;
+            return (
+              <span
+                key={i}
+                style={{ position: 'relative', display: 'inline-block' }}
+                onMouseEnter={() => setHoveredIdx(i)}
+                onMouseLeave={() => setHoveredIdx(null)}
+              >
+                {hoveredIdx === i && definition && (
+                  <span style={{
+                    position: 'absolute',
+                    bottom: 'calc(100% + 6px)',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: 'rgba(18,20,28,0.97)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '6px',
+                    padding: '6px 10px',
+                    fontSize: '0.74rem',
+                    color: 'var(--text-primary)',
+                    whiteSpace: 'normal',
+                    maxWidth: '220px',
+                    width: 'max-content',
+                    lineHeight: 1.45,
+                    zIndex: 10,
+                    pointerEvents: 'none',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+                  }}>
+                    {definition}
+                  </span>
+                )}
+                <span style={{
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '20px',
+                  padding: '4px 13px',
+                  fontSize: '0.8rem',
+                  whiteSpace: 'nowrap',
+                  display: 'inline-block',
+                  cursor: definition ? 'default' : undefined,
+                }}>
+                  <span style={{ color: 'var(--accent-blue)', fontWeight: 700 }}>{m.value}</span>
+                  <span style={{ color: 'var(--text-muted)', marginLeft: '5px' }}>{shortLabel}</span>
+                </span>
+              </span>
+            );
+          })}
+          {stockPE != null && sectorAvgPE != null && (() => {
+            const diff = (stockPE - sectorAvgPE) / sectorAvgPE;
+            const isAbove = diff > 0.15;
+            const isBelow = diff < -0.15;
+            const compText = isAbove ? 'priced above peers' : isBelow ? 'priced below peers' : 'in line with peers';
+            const chipColor = isAbove
+              ? { bg: 'rgba(248,113,113,0.1)', border: 'rgba(248,113,113,0.25)', text: 'var(--accent-red)' }
+              : isBelow
+                ? { bg: 'rgba(52,211,153,0.1)', border: 'rgba(52,211,153,0.25)', text: 'var(--accent-green)' }
+                : { bg: 'var(--bg-card)', border: 'var(--border)', text: 'var(--accent-blue)' };
+            const label = `${stockPE.toFixed(1)}x P/E vs ${Math.round(sectorAvgPE)}x sector avg — ${compText}`;
+            const tooltip = 'P/E ratio compares how much investors pay per $1 of profit. A higher P/E than peers means the stock is priced for more growth.';
+            return (
+              <span
+                key="sector"
+                style={{ position: 'relative', display: 'inline-block' }}
+                onMouseEnter={() => setHoveredIdx('sector')}
+                onMouseLeave={() => setHoveredIdx(null)}
+              >
+                {hoveredIdx === 'sector' && (
+                  <span style={{
+                    position: 'absolute',
+                    bottom: 'calc(100% + 6px)',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: 'rgba(18,20,28,0.97)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '6px',
+                    padding: '6px 10px',
+                    fontSize: '0.74rem',
+                    color: 'var(--text-primary)',
+                    whiteSpace: 'normal',
+                    maxWidth: '220px',
+                    width: 'max-content',
+                    lineHeight: 1.45,
+                    zIndex: 10,
+                    pointerEvents: 'none',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+                  }}>
+                    {tooltip}
+                  </span>
+                )}
+                <span style={{
+                  background: chipColor.bg,
+                  border: `1px solid ${chipColor.border}`,
+                  borderRadius: '20px',
+                  padding: '4px 13px',
+                  fontSize: '0.8rem',
+                  whiteSpace: 'nowrap',
+                  display: 'inline-block',
+                  color: chipColor.text,
+                  fontWeight: 600,
+                }}>
+                  {label}
+                </span>
+              </span>
+            );
+          })()}
         </div>
       )}
 
@@ -137,6 +233,14 @@ export default function ForecastResult({ forecast, ticker, companyName, quote })
         <div style={{ ...col, borderTop: `3px solid ${leanStyle.color}` }}>
           <p style={{ ...sectionLabel, color: leanStyle.color }}>Forecast</p>
           <p style={{ ...muted, marginBottom: '12px' }}>{verdict?.summary}</p>
+          {quote?.price != null && bull?.priceTargetRange && (
+            <p style={{ fontSize: '0.8rem', margin: '0 0 10px' }}>
+              <span style={{ color: 'var(--text-muted)' }}>Most likely </span>
+              <span style={{ color: 'var(--accent-blue)', fontWeight: 700 }}>
+                ${Math.round(quote.price * 0.9)}–${Math.round((bull.priceTargetRange.low + bull.priceTargetRange.high) / 2)}
+              </span>
+            </p>
+          )}
           <span style={{
             display: 'inline-block',
             background: leanStyle.bg,
@@ -150,6 +254,25 @@ export default function ForecastResult({ forecast, ticker, companyName, quote })
           }}>
             {lean}
           </span>
+          {forecast.confidenceScore != null && (() => {
+            const score = forecast.confidenceScore;
+            const barColor = score >= 65
+              ? 'var(--accent-green)'
+              : score >= 45
+                ? 'var(--accent-amber)'
+                : 'var(--accent-red)';
+            return (
+              <div style={{ marginTop: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '5px' }}>
+                  <span style={{ ...muted, fontSize: '0.74rem' }}>Confidence</span>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: barColor }}>{score}%</span>
+                </div>
+                <div style={{ height: '6px', borderRadius: '3px', background: 'var(--bg-input)' }}>
+                  <div style={{ height: '100%', width: `${score}%`, borderRadius: '3px', background: barColor, transition: 'width 0.4s ease' }} />
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Bear */}

@@ -51,6 +51,7 @@ Language rules you must follow:
 - Keep every sentence under 20 words.
 - Keep every paragraph under 3 sentences.
 - Use plain, everyday words. No Wall Street language.
+- Each bullet (driver or risk explanation) must be exactly one sentence. Maximum 20 words per bullet. If a bullet runs longer than one sentence, split it or drop the extra detail. No bullet should ever be two sentences.
 
 You must respond with ONLY a valid JSON object — no markdown fences, no commentary.
 The object must have exactly this shape:
@@ -76,11 +77,13 @@ The object must have exactly this shape:
     ],
     "downsideScenario": { "low": 90, "high": 120 }
   },
-  "educationalNote": "2-3 sentences explaining what investing concept this analysis illustrates. Keep it simple and beginner-friendly."
+  "educationalNote": "2-3 sentences explaining what investing concept this analysis illustrates. Keep it simple and beginner-friendly.",
+  "confidenceScore": 72
 }
 
 Rules:
 - verdict.lean must be exactly one of: "bullish", "neutral", "bearish"
+- Set confidenceScore between 0-100. Base it on how clearly the data points in one direction. Strong earnings beats + healthy margins + reasonable valuation = high confidence (75+). Mixed signals or stalled growth with high valuation = low confidence (40-55). Return it as a top-level field in the JSON.
 - Price targets are illustrative only — present them as a rough range, not a prediction.
 - Use only the data provided — do not invent metrics not in the input.
 - Include 4-5 keyMetrics. For each label, add a short plain-English definition in parentheses.
@@ -90,7 +93,7 @@ Rules:
 `.trim();
 
 function buildForecastUserPrompt(stockData) {
-  const { ticker, profile, quote, metrics, annualFinancials, earnings, monthlyCloses, recentNews } = stockData;
+  const { ticker, profile, quote, metrics, annualFinancials, earnings, recentNews } = stockData;
 
   const newsLines = recentNews.length
     ? recentNews.map((h) => `- ${h}`).join('\n')
@@ -121,11 +124,14 @@ ${annualFinancials.length ? JSON.stringify(annualFinancials, null, 2) : 'No repo
 === EARNINGS SURPRISES (last 4 quarters) ===
 ${earnings.length ? JSON.stringify(earnings, null, 2) : 'No earnings history available.'}
 
-=== MONTHLY PRICE HISTORY (closing prices, most recent 24 months) ===
-${monthlyCloses.length ? JSON.stringify(monthlyCloses) : 'No price history available.'}
-
 === RECENT NEWS HEADLINES ===
 ${newsLines}
+
+PRICE TARGET CONSTRAINT:
+Current price is $${quote.price}.
+bull.priceTargetRange.low AND .high must BOTH be above $${quote.price}.
+bear.downsideScenario.low AND .high must BOTH be below $${quote.price}.
+The current price is always the baseline — never set targets that cross it.
 
 Respond with the JSON forecast object only.
 `.trim();
@@ -153,6 +159,18 @@ export async function getForecast(stockData) {
 
   if (!parsed.bull || !parsed.bear || !parsed.verdict || !parsed.keyMetrics) {
     const err = new Error('AI returned an unexpected format. Please try again.');
+    err.statusCode = 502;
+    throw err;
+  }
+
+  const price = stockData.quote.price;
+  if (
+    parsed.bull?.priceTargetRange?.low <= price ||
+    parsed.bull?.priceTargetRange?.high <= price ||
+    parsed.bear?.downsideScenario?.low >= price ||
+    parsed.bear?.downsideScenario?.high >= price
+  ) {
+    const err = new Error('AI returned invalid price targets. Please try again.');
     err.statusCode = 502;
     throw err;
   }

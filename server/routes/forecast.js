@@ -30,7 +30,8 @@ router.post('/', async (req, res, next) => {
       ticker,
       companyName: stockData.profile.name,
       quote: stockData.quote,
-      monthlyCloses: stockData.monthlyCloses.slice(-12),
+      stockPE: stockData.stockPE ?? null,
+      sectorAvgPE: stockData.sectorAvgPE ?? null,
     });
   } catch (err) {
     next(err);

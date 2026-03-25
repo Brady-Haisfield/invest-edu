@@ -87,6 +87,13 @@ function trimMetrics(data) {
   return out;
 }
 
+function median(arr) {
+  if (!arr.length) return null;
+  const sorted = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
 export async function getStockData(ticker) {
   const TICKER_RE = /^[A-Z]{1,5}$/;
   if (!TICKER_RE.test(ticker)) {
@@ -96,20 +103,19 @@ export async function getStockData(ticker) {
   }
 
   const now = Math.floor(Date.now() / 1000);
-  const twoYearsAgo = now - 2 * 365 * 24 * 60 * 60;
   const fourteenDaysAgo = now - 14 * 24 * 60 * 60;
   const newsFrom = new Date(fourteenDaysAgo * 1000).toISOString().split('T')[0];
   const newsTo = new Date(now * 1000).toISOString().split('T')[0];
 
-  const [profileRes, quoteRes, metricsRes, financialsRes, candlesRes, earningsRes, newsRes] =
+  const [profileRes, quoteRes, metricsRes, financialsRes, earningsRes, newsRes, peersRes] =
     await Promise.allSettled([
       finnhubFetch(`/stock/profile2?symbol=${ticker}`),
       finnhubFetch(`/quote?symbol=${ticker}`),
       finnhubFetch(`/stock/metric?symbol=${ticker}&metric=all`),
       finnhubFetch(`/stock/financials-reported?symbol=${ticker}&freq=annual`),
-      finnhubFetch(`/stock/candle?symbol=${ticker}&resolution=M&from=${twoYearsAgo}&to=${now}`),
       finnhubFetch(`/stock/earnings?symbol=${ticker}`),
       finnhubFetch(`/company-news?symbol=${ticker}&from=${newsFrom}&to=${newsTo}`),
+      finnhubFetch(`/stock/peers?symbol=${ticker}`),
     ]);
 
   const quote = quoteRes.status === 'fulfilled' ? quoteRes.value : {};
@@ -122,9 +128,21 @@ export async function getStockData(ticker) {
   const profile = profileRes.status === 'fulfilled' ? profileRes.value : {};
   const metricsRaw = metricsRes.status === 'fulfilled' ? metricsRes.value : {};
   const financialsRaw = financialsRes.status === 'fulfilled' ? financialsRes.value : {};
-  const candlesRaw = candlesRes.status === 'fulfilled' ? candlesRes.value : {};
   const earningsRaw = earningsRes.status === 'fulfilled' ? earningsRes.value : [];
   const newsRaw = newsRes.status === 'fulfilled' ? newsRes.value : [];
+
+  // Wave 2: fetch P/E for up to 5 peers
+  const peersRaw = peersRes.status === 'fulfilled' && Array.isArray(peersRes.value)
+    ? peersRes.value.filter((p) => p !== ticker).slice(0, 5)
+    : [];
+  const peerMetricResults = peersRaw.length
+    ? await Promise.allSettled(peersRaw.map((p) => finnhubFetch(`/stock/metric?symbol=${p}&metric=all`)))
+    : [];
+  const peerPEs = peerMetricResults
+    .filter((r) => r.status === 'fulfilled')
+    .map((r) => r.value?.metric?.peBasicExclExtraTTM)
+    .filter((pe) => pe != null && pe > 0 && pe < 200);
+  const sectorAvgPE = median(peerPEs);
 
   return {
     ticker,
@@ -144,9 +162,10 @@ export async function getStockData(ticker) {
       high52: quote.h ?? null,
       low52: quote.l ?? null,
     },
+    stockPE: metricsRaw?.metric?.peBasicExclExtraTTM ?? null,
+    sectorAvgPE,
     metrics: trimMetrics(metricsRaw),
     annualFinancials: trimFinancials(financialsRaw),
-    monthlyCloses: Array.isArray(candlesRaw.c) ? candlesRaw.c : [],
     earnings: Array.isArray(earningsRaw)
       ? earningsRaw.slice(0, 4).map((e) => ({
           period: e.period,
