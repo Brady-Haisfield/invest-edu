@@ -17,7 +17,7 @@ no commentary, no extra keys. The array must contain exactly 5 objects with this
 [
   {
     "ticker": "AAPL",
-    "reasoning": "A 2-3 sentence educational explanation of why this stock illustrates concepts relevant to the user's profile. Mention the sector, what the company does, and what investing concept it demonstrates (e.g. dividend stability, growth potential, defensive characteristics, etc.)."
+    "reasoning": "Exactly 2 sentences. Sentence 1: what the company does in plain English (no jargon). Sentence 2: why it fits this investor's profile specifically — reference their risk tolerance, hold period, or sector interest."
   }
 ]
 
@@ -29,6 +29,7 @@ Rules:
   low = stable blue-chips with simple dividend/stability explanations
   medium = balanced mix of growth and stability
   high = growth/speculative stocks with explanations of why higher volatility fits their horizon
+- reasoning must be exactly 2 sentences. No more. No exceptions.
 `.trim();
 
 function buildUserPrompt(inputs) {

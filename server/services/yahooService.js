@@ -9,25 +9,30 @@ function finnhubFetch(path) {
 }
 
 export async function getQuote(ticker) {
-  const [quote, profile] = await Promise.all([
+  const [quote, profile, metricResult] = await Promise.allSettled([
     finnhubFetch(`/quote?symbol=${ticker}`),
     finnhubFetch(`/stock/profile2?symbol=${ticker}`),
+    finnhubFetch(`/stock/metric?symbol=${ticker}&metric=all`),
   ]);
 
+  const q = quote.status === 'fulfilled' ? quote.value : {};
+  const p = profile.status === 'fulfilled' ? profile.value : {};
+  const m = metricResult.status === 'fulfilled' ? metricResult.value : {};
+
   // Finnhub returns c=0 when ticker is invalid
-  if (!quote.c) throw new Error(`No data for ${ticker}`);
+  if (!q.c) throw new Error(`No data for ${ticker}`);
+
+  const peRatio = m.metric?.peBasicExclExtraTTM ?? m.metric?.peTTM ?? null;
 
   return {
     ticker,
-    name: profile.name ?? ticker,
-    price: quote.c ?? null,            // current price
-    fiftyTwoWeekLow: quote.l ?? null,  // today's low (52wk not in free tier)
-    fiftyTwoWeekHigh: quote.h ?? null, // today's high
-    peRatio: null,                     // not in Finnhub free tier
-    marketCap: profile.marketCapitalization
-      ? profile.marketCapitalization * 1e6
-      : null,
-    sector: profile.finnhubIndustry ?? null,
-    currency: profile.currency ?? 'USD',
+    name: p.name ?? ticker,
+    price: q.c ?? null,
+    fiftyTwoWeekLow: q.l ?? null,
+    fiftyTwoWeekHigh: q.h ?? null,
+    peRatio,
+    marketCap: p.marketCapitalization ? p.marketCapitalization * 1e6 : null,
+    sector: p.finnhubIndustry ?? null,
+    currency: p.currency ?? 'USD',
   };
 }

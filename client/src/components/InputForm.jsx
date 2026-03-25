@@ -62,19 +62,30 @@ export default function InputForm({ onSubmit, disabled }) {
           }}>$</span>
           <input
             id="amount"
-            type="number"
-            min="1"
-            step="1"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
             value={amount}
-            onChange={(e) => { setAmount(e.target.value); setAmtError(''); }}
+            onChange={(e) => {
+              const val = e.target.value.replace(/\D/g, '');
+              setAmount(val);
+              setAmtError('');
+            }}
             placeholder="5000"
             className="ticker-input"
             style={{
               paddingLeft: 28,
               borderColor: amtError ? 'var(--accent-red)' : undefined,
+              backgroundColor: 'var(--bg-input)',
             }}
-            onFocus={(e) => e.target.style.borderColor = 'var(--border-focus)'}
-            onBlur={(e) => e.target.style.borderColor = amtError ? 'var(--accent-red)' : 'var(--border)'}
+            onFocus={(e) => {
+              e.target.style.borderColor = 'var(--border-focus)';
+              e.target.style.backgroundColor = 'var(--bg-input)';
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = amtError ? 'var(--accent-red)' : 'var(--border)';
+              e.target.style.backgroundColor = 'var(--bg-input)';
+            }}
           />
         </div>
         {amtError && (
@@ -136,7 +147,7 @@ export default function InputForm({ onSubmit, disabled }) {
             }} />
             Analyzing...
           </span>
-        ) : 'Get My Educational Picks'}
+        ) : 'Find My Stocks'}
       </button>
 
     </form>

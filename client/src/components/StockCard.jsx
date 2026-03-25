@@ -58,7 +58,7 @@ export default function StockCard({ card }) {
   return (
     <div
       className="card"
-      style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', transition: 'background 0.15s' }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', transition: 'background 0.15s', padding: 'var(--space-4)' }}
       onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
       onMouseLeave={(e) => e.currentTarget.style.background = 'var(--bg-card)'}
     >
@@ -82,7 +82,7 @@ export default function StockCard({ card }) {
       </div>
 
       {/* Price */}
-      <div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <div className="price-large">{formatPrice(price)}</div>
         <RangeBar low={fiftyTwoWeekLow} high={fiftyTwoWeekHigh} price={price} />
       </div>

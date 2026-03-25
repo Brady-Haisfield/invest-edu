@@ -100,22 +100,39 @@ export default function App() {
 
         {/* Home Page */}
         {currentPage === 'home' && (
-          <div
-            className="layout-grid"
-            style={{ gridTemplateColumns: cards || loading ? '320px 1fr' : '400px' }}
-          >
+          <div className="layout-grid" style={{ gridTemplateColumns: '280px 1fr' }}>
             <div className="sidebar">
               <h2 className="section-label" style={{ marginBottom: 'var(--space-5)' }}>Your Profile</h2>
               <InputForm onSubmit={handleSubmit} disabled={loading} />
             </div>
 
-            {(loading || error || cards) && (
-              <div>
-                {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
-                {loading && <LoadingState />}
-                {cards && !loading && <StockGrid cards={cards} />}
-              </div>
-            )}
+            <div>
+              {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
+              {loading && <LoadingState />}
+              {cards && !loading && <StockGrid cards={cards} />}
+              {!loading && !error && !cards && (
+                <div style={{ padding: 'var(--space-8)', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+                  <h2 style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontSize: 28, lineHeight: 1.3, fontWeight: 400 }}>
+                    Find stocks that fit you
+                  </h2>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', maxWidth: 420, lineHeight: 1.6 }}>
+                    Tell us your risk tolerance, how long you want to hold, and what sectors interest you. We'll match you with stocks that fit your profile — and explain why each one makes sense.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
+                    {[
+                      'Matched to your risk tolerance and timeline',
+                      'Real market prices pulled live',
+                      'Plain-English explanations — no jargon',
+                    ].map((text) => (
+                      <div key={text} style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', marginTop: 6, flexShrink: 0 }} />
+                        <span style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
