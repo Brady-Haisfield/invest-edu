@@ -12,6 +12,7 @@ import ForecastForm from './components/ForecastForm.jsx';
 import ForecastResult from './components/ForecastResult.jsx';
 import ForecastLoadingState from './components/ForecastLoadingState.jsx';
 import ForecastChart from './components/ForecastChart.jsx';
+import RefinePlanPanel from './components/RefinePlanPanel.jsx';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState('home');
@@ -137,6 +138,9 @@ export default function App() {
                   disabled={loading}
                   onShowFullForm={() => setShowFullForm(true)}
                 />
+              )}
+              {cards && !loading && (
+                <RefinePlanPanel inputs={lastInputs} onSubmit={handleSubmit} disabled={loading} />
               )}
             </div>
 

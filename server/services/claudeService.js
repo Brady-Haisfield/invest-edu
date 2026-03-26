@@ -57,6 +57,14 @@ Account type awareness:
 - If account type is "Roth IRA" or "Traditional IRA": bond ETFs and high-dividend stocks are ideal here since taxes are deferred or eliminated.
 - If account type is "401(k) / employer plan": suggest broad, low-cost index funds and target-date style allocations.
 - Always mention the account type briefly in the reasoning when it meaningfully affects the suggestion.
+
+Deeper financial picture (if provided):
+- If liquidity floor is close to or exceeds total savings, avoid illiquid assets entirely — suggest only highly liquid securities.
+- If monthly surplus is low (under $200) or negative, flag conservative options and capital preservation; note the tight cash flow in the advisorNarrative.
+- If pension + Social Security covers monthly expenses, the investor needs less income from investments — weight toward growth.
+- If pension is "no" and Social Security is low or absent, weight heavily toward income-generating securities (dividend stocks, REITs, bond ETFs).
+- If children are young (any age under 10), consider mentioning a 529-style education savings angle in the reasoning where relevant.
+- Always reference at least 2 of the deeper financial facts in the advisorNarrative when they are provided.
 `.trim();
 
 const GOAL_MODE_INSTRUCTIONS = {
@@ -96,6 +104,27 @@ function buildUserPrompt(inputs) {
 
   const profile = lines.map((l) => `- ${l}`).join('\n');
 
+  // Build deeper financial picture section — only include fields that were provided
+  const deepLines = [];
+  if (inputs.numChildren != null)        deepLines.push(`Children: ${inputs.numChildren}${inputs.childrenAges ? `, ages ${inputs.childrenAges}` : ''}`);
+  if (inputs.monthlyDependentCosts)      deepLines.push(`Monthly dependent costs: $${inputs.monthlyDependentCosts.toLocaleString()}`);
+  if (inputs.supportingAgingParents)     deepLines.push(`Supporting aging parents: ${inputs.supportingAgingParents}`);
+  if (inputs.totalSavings)               deepLines.push(`Total current savings/investments: $${inputs.totalSavings.toLocaleString()}`);
+  if (inputs.liquidityFloor)             deepLines.push(`Liquidity floor (never invest this): $${inputs.liquidityFloor.toLocaleString()}`);
+  if (inputs.monthlyTakeHome)            deepLines.push(`Monthly take-home: $${inputs.monthlyTakeHome.toLocaleString()}`);
+  if (inputs.monthlyExpenses)            deepLines.push(`Monthly essential expenses: $${inputs.monthlyExpenses.toLocaleString()}`);
+  if (inputs.monthlySurplus != null)     deepLines.push(`Monthly investable surplus: $${inputs.monthlySurplus.toLocaleString()}`);
+  if (inputs.hasPension)                 deepLines.push(`Has pension: ${inputs.hasPension}`);
+  if (inputs.expectedSocialSecurity)     deepLines.push(`Expected Social Security: $${inputs.expectedSocialSecurity.toLocaleString()}/month`);
+  if (inputs.targetRetirementAge) {
+    const yearsAway = inputs.age ? Math.max(0, inputs.targetRetirementAge - inputs.age) : null;
+    deepLines.push(`Target retirement age: ${inputs.targetRetirementAge}${yearsAway !== null ? ` (${yearsAway} years away)` : ''}`);
+  }
+
+  const deepSection = deepLines.length
+    ? `\nDEEPER FINANCIAL PICTURE:\n${deepLines.map((l) => `- ${l}`).join('\n')}`
+    : '';
+
   return `
 Investor profile:
 ${profile}
@@ -103,7 +132,7 @@ ${profile}
 Goal mode guidance: ${goalNote}
 ${retirementNote ? retirementNote + '\n' : ''}
 Use ALL of the above profile details to personalize every suggestion. Reference specific profile facts in the reasoning field — for example mention the college tuition timeline, the income bracket, the drop reaction, or the family situation where relevant.
-
+${deepSection}
 Suggest 5 educational investment examples for this profile. Respond with JSON array only.
 `.trim();
 }

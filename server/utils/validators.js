@@ -20,6 +20,10 @@ export function validateInputs(body) {
     annualIncome, accountType, employmentStatus, emergencyFund, existingInvestments,
     familySituation, homeownership, upcomingExpenses,
     priorities, dropReaction, themes, involvement, investmentPurpose,
+    // Refined financial picture (optional)
+    numChildren, childrenAges, monthlyDependentCosts, supportingAgingParents,
+    totalSavings, liquidityFloor, monthlyTakeHome, monthlyExpenses, monthlySurplus,
+    hasPension, expectedSocialSecurity, targetRetirementAge,
   } = body;
 
   if (!VALID_RISK.includes(riskProfile)) {
@@ -60,5 +64,18 @@ export function validateInputs(body) {
     themes:             cleanStringArray(themes),
     involvement:        cleanString(involvement),
     investmentPurpose:  cleanString(investmentPurpose),
+    // Refined financial picture
+    numChildren:          (Number.isFinite(Number(numChildren)) && Number(numChildren) >= 0) ? Math.floor(Number(numChildren)) : null,
+    childrenAges:         cleanString(childrenAges) || null,
+    monthlyDependentCosts: Number.isFinite(Number(monthlyDependentCosts)) && Number(monthlyDependentCosts) > 0 ? Number(monthlyDependentCosts) : null,
+    supportingAgingParents: ['yes', 'no'].includes(supportingAgingParents) ? supportingAgingParents : null,
+    totalSavings:         Number.isFinite(Number(totalSavings)) && Number(totalSavings) > 0 ? Number(totalSavings) : null,
+    liquidityFloor:       Number.isFinite(Number(liquidityFloor)) && Number(liquidityFloor) > 0 ? Number(liquidityFloor) : null,
+    monthlyTakeHome:      Number.isFinite(Number(monthlyTakeHome)) && Number(monthlyTakeHome) > 0 ? Number(monthlyTakeHome) : null,
+    monthlyExpenses:      Number.isFinite(Number(monthlyExpenses)) && Number(monthlyExpenses) > 0 ? Number(monthlyExpenses) : null,
+    monthlySurplus:       Number.isFinite(Number(monthlySurplus)) ? Number(monthlySurplus) : null,
+    hasPension:           ['yes', 'no', 'not-sure'].includes(hasPension) ? hasPension : null,
+    expectedSocialSecurity: Number.isFinite(Number(expectedSocialSecurity)) && Number(expectedSocialSecurity) > 0 ? Number(expectedSocialSecurity) : null,
+    targetRetirementAge:  (Number.isFinite(Number(targetRetirementAge)) && Number(targetRetirementAge) >= 18) ? Math.floor(Number(targetRetirementAge)) : null,
   };
 }

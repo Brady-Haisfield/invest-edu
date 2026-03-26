@@ -86,7 +86,7 @@ function LevelChip({ label, level }) {
 
 export default function StockCard({ card, equalProjection }) {
   const { ticker, name, price, fiftyTwoWeekLow, fiftyTwoWeekHigh, peRatio, marketCap, sector, reasoning, type, portfolioRole, retirementLens, watchOut } = card;
-  const [lensOpen, setLensOpen] = useState(true);
+  const [lensOpen, setLensOpen] = useState(false);
 
   const typeConf = TYPE_CONFIG[type] || TYPE_CONFIG.stock;
 
