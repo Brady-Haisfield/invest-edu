@@ -102,7 +102,7 @@ export default function App() {
 
         {/* Home Page */}
         {currentPage === 'home' && (
-          <div className="layout-grid" style={{ gridTemplateColumns: '280px 1fr' }}>
+          <div className="layout-grid" style={{ gridTemplateColumns: '300px 1fr' }}>
             <div className="sidebar">
               <div style={{ marginBottom: 'var(--space-5)' }}>
                 <h2 className="section-label" style={{ marginBottom: 'var(--space-2)' }}>Your Profile</h2>

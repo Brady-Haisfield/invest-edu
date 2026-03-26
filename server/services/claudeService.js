@@ -51,29 +51,49 @@ General rules:
 `.trim();
 
 const GOAL_MODE_INSTRUCTIONS = {
-  'just-starting':          'This investor is just getting started — prefer broad market ETFs, simple blue-chip stocks, and low-complexity options. Avoid niche or speculative picks.',
-  'growing-wealth':         'This investor is in wealth-building mode — prefer equities and growth-oriented ETFs with solid fundamentals. Some diversification is welcome.',
-  'approaching-retirement': 'This investor is approaching retirement — bias strongly toward income, stability, bond ETFs, dividend stocks, and REITs. Limit high-volatility picks.',
-  'already-retired':        'This investor is already retired — prioritize capital preservation and income. Bonds, dividend ETFs, and REITs are ideal. Avoid growth stocks and speculative assets.',
+  'just-starting':          'Investor is just getting started — prefer broad market ETFs, simple blue-chip stocks, and low-complexity options. Avoid niche or speculative picks.',
+  'growing-wealth':         'Investor is in wealth-building mode — prefer equities and growth-oriented ETFs with solid fundamentals. Some diversification is welcome.',
+  'approaching-retirement': 'Investor is approaching retirement — bias strongly toward income, stability, bond ETFs, dividend stocks, and REITs. Limit high-volatility picks.',
+  'already-retired':        'Investor is already retired — prioritize capital preservation and income. Bonds, dividend ETFs, and REITs are ideal. Avoid growth stocks and speculative assets.',
 };
 
 function buildUserPrompt(inputs) {
   const retirementNote = (inputs.riskProfile === 'low' || inputs.holdPeriod === 'short')
-    ? '\nNote: This investor prefers lower risk or a shorter horizon — lean toward capital preservation. Include at least 2 ETFs, bond ETFs, or REITs in your suggestions.'
+    ? 'Note: This investor prefers lower risk or a shorter horizon — lean toward capital preservation. Include at least 2 ETFs, bond ETFs, or REITs.'
     : '';
-
   const goalNote = GOAL_MODE_INSTRUCTIONS[inputs.goalMode] || '';
 
+  // Build comprehensive profile lines — omit empty optional fields
+  const lines = [];
+  if (inputs.age)              lines.push(`Age: ${inputs.age}`);
+  lines.push(`Risk tolerance: ${inputs.riskProfile}`);
+  lines.push(`Goal mode: ${inputs.goalMode}`);
+  if (inputs.annualIncome)     lines.push(`Annual income: ${inputs.annualIncome}`);
+  if (inputs.employmentStatus) lines.push(`Employment: ${inputs.employmentStatus}`);
+  if (inputs.emergencyFund)    lines.push(`Emergency fund: ${inputs.emergencyFund}`);
+  if (inputs.existingInvestments?.length) lines.push(`Existing investments: ${inputs.existingInvestments.join(', ')}`);
+  if (inputs.familySituation)  lines.push(`Family situation: ${inputs.familySituation}`);
+  if (inputs.homeownership)    lines.push(`Homeownership: ${inputs.homeownership}`);
+  if (inputs.upcomingExpenses?.length) lines.push(`Upcoming expenses: ${inputs.upcomingExpenses.join(', ')}`);
+  if (inputs.priorities?.length) lines.push(`Priorities: ${inputs.priorities.join(', ')}`);
+  if (inputs.dropReaction)     lines.push(`Reaction to 20% portfolio drop: ${inputs.dropReaction}`);
+  if (inputs.themes?.length)   lines.push(`Themes of interest: ${inputs.themes.join(', ')}`);
+  if (inputs.involvement)      lines.push(`Involvement preference: ${inputs.involvement}`);
+  if (inputs.investmentPurpose) lines.push(`Investment purpose: ${inputs.investmentPurpose}`);
+  lines.push(`Amount to invest: $${inputs.amount.toLocaleString()}`);
+  lines.push(`Hold period: ${inputs.holdPeriod}-term`);
+  if (inputs.sectors?.length)  lines.push(`Sectors of interest: ${inputs.sectors.join(', ')}`);
+
+  const profile = lines.map((l) => `- ${l}`).join('\n');
+
   return `
-User investing profile:
-- Risk tolerance: ${inputs.riskProfile}
-- Amount to invest: $${inputs.amount.toLocaleString()}
-- Hold period: ${inputs.holdPeriod}-term
-- Goal mode: ${inputs.goalMode}
-- Sectors of interest: ${inputs.sectors.length ? inputs.sectors.join(', ') : 'No preference'}
+Investor profile:
+${profile}
 
 Goal mode guidance: ${goalNote}
-${retirementNote}
+${retirementNote ? retirementNote + '\n' : ''}
+Use ALL of the above profile details to personalize every suggestion. Reference specific profile facts in the reasoning field — for example mention the college tuition timeline, the income bracket, the drop reaction, or the family situation where relevant.
+
 Suggest 5 educational investment examples for this profile. Respond with JSON array only.
 `.trim();
 }

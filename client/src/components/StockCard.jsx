@@ -84,8 +84,7 @@ function LevelChip({ label, level }) {
   );
 }
 
-export default function StockCard({ card }) {
-  console.log('StockCard card prop:', card);
+export default function StockCard({ card, equalProjection }) {
   const { ticker, name, price, fiftyTwoWeekLow, fiftyTwoWeekHigh, peRatio, marketCap, sector, reasoning, type, portfolioRole, retirementLens, watchOut } = card;
   const [lensOpen, setLensOpen] = useState(true);
 
@@ -212,6 +211,23 @@ export default function StockCard({ card }) {
         }}>
           <span style={{ color: 'var(--accent-red)', fontSize: 11, flexShrink: 0, marginTop: 1 }}>⚠</span>
           <span style={{ fontSize: 11, color: 'var(--accent-red)', lineHeight: 1.5 }}>{watchOut}</span>
+        </div>
+      )}
+
+      {/* Equal-split projection preview */}
+      {equalProjection && (
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 'var(--space-2)' }}>
+          <div style={{
+            fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase',
+            letterSpacing: '0.06em', fontFamily: "'DM Mono', monospace", marginBottom: 4,
+          }}>Your projection</div>
+          <p style={{ fontSize: 11, color: 'var(--text-secondary)', fontFamily: "'DM Mono', monospace", margin: 0, lineHeight: 1.6 }}>
+            ${equalProjection.amount.toLocaleString()} invested →{' '}
+            <span style={{ color: 'var(--accent-green-bright)' }}>~${equalProjection.projected.toLocaleString()}</span>
+            {' '}in {equalProjection.holdYears} yr{equalProjection.holdYears !== 1 ? 's' : ''} ·{' '}
+            <span style={{ color: 'var(--accent-green-bright)' }}>~${equalProjection.income.toLocaleString()}/yr</span>
+            {' '}income
+          </p>
         </div>
       )}
     </div>
