@@ -1,9 +1,7 @@
 import { useState } from 'react';
+import { calcProjection } from '../utils/projections.js';
 
-const GROWTH_RATES_STANDARD     = { stock: 0.07,  etf: 0.065, bond_etf: 0.035, reit: 0.055 };
-const GROWTH_RATES_CONSERVATIVE = { stock: 0.05,  etf: 0.05,  bond_etf: 0.03,  reit: 0.045 };
-const INCOME_YIELDS             = { stock: 0.018, etf: 0.025, bond_etf: 0.042, reit: 0.048 };
-const HOLD_YEARS                = { short: 2, medium: 5, long: 10 };
+const HOLD_YEARS = { short: 2, medium: 5, long: 10 };
 
 const TYPE_LABELS = { stock: 'Stock', etf: 'ETF', bond_etf: 'Bond ETF', reit: 'REIT' };
 const TYPE_COLORS = {
@@ -12,21 +10,6 @@ const TYPE_COLORS = {
   bond_etf: 'var(--accent-amber)',
   reit:     'var(--accent-blue)',
 };
-
-function getRate(type, goalMode) {
-  const conservative = goalMode === 'approaching-retirement' || goalMode === 'already-retired';
-  const rates = conservative ? GROWTH_RATES_CONSERVATIVE : GROWTH_RATES_STANDARD;
-  return rates[type] ?? rates.stock;
-}
-
-function calcProjection(amount, type, holdPeriod, goalMode) {
-  const years = HOLD_YEARS[holdPeriod] ?? 10;
-  return Math.round(amount * Math.pow(1 + getRate(type, goalMode), years));
-}
-
-function calcIncome(amount, type) {
-  return Math.round(amount * (INCOME_YIELDS[type] ?? INCOME_YIELDS.stock));
-}
 
 function fmt(n) {
   return `$${Math.round(n).toLocaleString()}`;
@@ -40,13 +23,14 @@ function initAllocations(cards, total) {
   return Object.fromEntries(cards.map((c, i) => [c.ticker, base + (i === n - 1 ? remainder : 0)]));
 }
 
-export default function AllocationBuilder({ cards, inputs }) {
+export default function AllocationBuilder({ cards, inputs, treasuryRates }) {
   const total      = inputs?.amount     || 0;
   const holdPeriod = inputs?.holdPeriod || 'long';
   const goalMode   = inputs?.goalMode   || 'growing-wealth';
   const holdYears  = HOLD_YEARS[holdPeriod] ?? 10;
 
-  const [allocs, setAllocs] = useState(() => initAllocations(cards, total));
+  const [allocs, setAllocs]           = useState(() => initAllocations(cards, total));
+  const [openTooltip, setOpenTooltip] = useState(null);
 
   function handleSlider(ticker, newVal) {
     const clamped = Math.min(total, Math.max(0, newVal));
@@ -88,15 +72,15 @@ export default function AllocationBuilder({ cards, inputs }) {
     setAllocs(initAllocations(cards, total));
   }
 
+  const conservative = goalMode === 'approaching-retirement' || goalMode === 'already-retired';
   const rows = cards.map((c) => {
-    const amt  = allocs[c.ticker] ?? 0;
-    const proj = calcProjection(amt, c.type, holdPeriod, goalMode);
-    const inc  = calcIncome(amt, c.type);
-    return { ...c, amt, proj, inc };
+    const amt    = allocs[c.ticker] ?? 0;
+    const result = calcProjection({ ...c, _allocatedAmount: amt }, holdYears, conservative, treasuryRates);
+    return { ...c, amt, result };
   });
 
-  const totalProjected = rows.reduce((s, r) => s + r.proj, 0);
-  const totalIncome    = rows.reduce((s, r) => s + r.inc, 0);
+  const totalProjected = rows.reduce((s, r) => s + r.result.baseValue, 0);
+  const totalIncome    = rows.reduce((s, r) => s + r.result.annualIncome, 0);
   const allocated      = rows.reduce((s, r) => s + r.amt, 0);
   const unallocated    = total - allocated;
 
@@ -136,19 +120,14 @@ export default function AllocationBuilder({ cards, inputs }) {
       {/* Rows */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
         {rows.map((row) => {
-          const pct = total > 0 ? ((row.amt / total) * 100).toFixed(0) : 0;
+          const pct       = total > 0 ? ((row.amt / total) * 100).toFixed(0) : 0;
           const typeColor = TYPE_COLORS[row.type] || TYPE_COLORS.stock;
           const typeLabel = TYPE_LABELS[row.type] || 'Stock';
 
           return (
             <div
               key={row.ticker}
-              style={{
-                padding: 'var(--space-3)',
-                borderRadius: 'var(--radius)',
-                background: 'var(--bg)',
-                border: '1px solid var(--border)',
-              }}
+              style={{ padding: 'var(--space-3)', borderRadius: 'var(--radius)', background: 'var(--bg)', border: '1px solid var(--border)' }}
             >
               {/* Row header: ticker + name + dollar input */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-2)', gap: 8, flexWrap: 'wrap' }}>
@@ -195,11 +174,52 @@ export default function AllocationBuilder({ cards, inputs }) {
               <div style={{ display: 'flex', gap: 'var(--space-5)', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace" }}>
                   In {holdYears} yrs →{' '}
-                  <span style={{ color: 'var(--accent-green-bright)' }}>~{fmt(row.proj)}</span>
+                  <span style={{ color: 'var(--accent-green-bright)' }}>~{fmt(row.result.baseValue)}</span>
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace" }}>
-                  <span style={{ color: 'var(--accent-green-bright)' }}>~{fmt(row.inc)}</span>/yr income
+                  <span style={{ color: 'var(--accent-green-bright)' }}>~{fmt(row.result.annualIncome)}</span>/yr income
                 </span>
+              </div>
+
+              {/* Methodology line + tooltip */}
+              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 3 }}>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace" }}>
+                  {row.result.dataSource === 'real' ? 'Actual data' : 'Estimated'} · {(row.result.baseRate * 100).toFixed(1)}%/yr
+                </span>
+                <button
+                  type="button"
+                  onMouseEnter={() => setOpenTooltip(row.ticker)}
+                  onMouseLeave={() => setOpenTooltip(null)}
+                  style={{ background: 'none', border: 'none', cursor: 'default', color: 'var(--text-muted)', fontSize: 10, padding: '0 2px', fontFamily: "'DM Mono', monospace", lineHeight: 1 }}
+                >
+                  ℹ
+                </button>
+                {openTooltip === row.ticker && (
+                  <div style={{
+                    position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, zIndex: 50,
+                    background: 'var(--bg-card)', border: '1px solid var(--border-2)',
+                    borderRadius: 'var(--radius)', padding: 'var(--space-3)',
+                    minWidth: 240, maxWidth: 300, lineHeight: 1.5,
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                    pointerEvents: 'none',
+                  }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>
+                      {row.result.methodology}
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                      Data:{' '}
+                      <span style={{ color: row.result.dataSource === 'real' ? 'var(--accent-green-bright)' : 'var(--accent-amber)' }}>
+                        {row.result.dataSource}
+                      </span>
+                      {' · '}Range: ~{fmt(row.result.pessimisticValue)} — ~{fmt(row.result.optimisticValue)}
+                    </div>
+                    {row.result.assetNote && (
+                      <div style={{ fontSize: 10, color: 'var(--accent-amber)', marginTop: 4 }}>
+                        ⚠ {row.result.assetNote}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -229,10 +249,50 @@ export default function AllocationBuilder({ cards, inputs }) {
           </div>
         </div>
         <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 var(--space-3)' }}>
-          Based on your allocation, your {fmt(total)} could grow to ~{fmt(totalProjected)} over {holdYears} year{holdYears !== 1 ? 's' : ''} and generate roughly {fmt(totalIncome)}/year in income.
+          Based on each security's historical growth data, your {fmt(total)} could grow to ~{fmt(totalProjected)} over {holdYears} year{holdYears !== 1 ? 's' : ''} and generate roughly {fmt(totalIncome)}/year in income.
         </p>
-        <p style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.5, margin: 0, fontStyle: 'italic' }}>
-          Projections are illustrative only and assume constant growth rates. Actual returns will vary. Not financial advice.
+
+        {/* SPY comparison */}
+        {total > 0 && (() => {
+          const spyProjected = Math.round(total * Math.pow(1.10, holdYears));
+          const spyIncome    = Math.round(total * 0.013);
+          const diff         = totalProjected - spyProjected;
+          const diffPct      = Math.abs(diff / spyProjected) * 100;
+          let insight;
+          if (diffPct < 15) {
+            insight = 'Your allocation performs similarly to a simple S&P 500 index fund — the main difference is in income generation and sector exposure.';
+          } else if (diff > 0) {
+            insight = `Your allocation projects ${diffPct.toFixed(0)}% higher than SPY — typically from higher-risk assets. More potential upside usually means more volatility along the way.`;
+          } else {
+            insight = `Your allocation projects ${diffPct.toFixed(0)}% lower than SPY — often a sign of a more conservative, income-focused mix. Less growth, but potentially smoother ride.`;
+          }
+          return (
+            <>
+              <div style={{ borderTop: '1px solid rgba(52,211,153,0.15)', margin: 'var(--space-3) 0' }} />
+              <div style={{ marginBottom: 'var(--space-3)' }}>
+                <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace" }}>
+                  Vs. S&P 500 index fund (SPY)
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginBottom: 'var(--space-3)' }}>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace", marginBottom: 4 }}>Your allocation</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'DM Mono', monospace", color: 'var(--accent-green-bright)' }}>~{fmt(totalProjected)}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace", marginTop: 2 }}>~{fmt(totalIncome)}/yr income</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace", marginBottom: 4 }}>SPY (10%/yr, 1.3% yield)</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'DM Mono', monospace", color: 'var(--text-secondary)' }}>~{fmt(spyProjected)}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace", marginTop: 2 }}>~{fmt(spyIncome)}/yr income</div>
+                </div>
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 var(--space-3)' }}>{insight}</p>
+            </>
+          );
+        })()}
+
+        <p style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.5, margin: 0 }}>
+          Return methodology: Stocks use Bogle dividend+growth model blended with CAPM. ETFs use CAPM with actual beta. Bond ETFs use live US Treasury yields from the Federal Reserve (updated daily). REITs use dividend yield weighted with FFO growth. Pessimistic/optimistic range reflects ±40% variance in base estimate. Not a guarantee of future returns.
         </p>
       </div>
     </div>

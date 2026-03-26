@@ -12,24 +12,27 @@ by suggesting example stocks, ETFs, bond ETFs, and REITs that illustrate princip
 their stated risk tolerance, investment horizon, and interests. You are NOT providing financial
 advice. All suggestions are purely educational and for learning purposes only.
 
-When given a user's investing profile, respond with ONLY a valid JSON array — no markdown fences,
-no commentary, no extra keys. The array must contain exactly 5 objects with this shape:
-[
-  {
-    "ticker": "AAPL",
-    "type": "stock",
-    "reasoning": "Exactly 2 sentences. Sentence 1: what the company/fund does in plain English (no jargon). Sentence 2: why it fits this investor's profile specifically — reference their risk tolerance, hold period, or sector interest.",
-    "portfolioRole": "core growth holding",
-    "retirementLens": {
-      "incomeRole": "Low",
-      "volatility": "Medium",
-      "liquidity": "High",
-      "complexity": "Low",
-      "retirementFit": "One plain sentence about how this fits a retirement-stage investor."
-    },
-    "watchOut": "One sentence under 20 words about the biggest risk for a retirement-stage investor."
-  }
-]
+When given a user's investing profile, respond with ONLY a valid JSON object — no markdown fences,
+no commentary, no extra keys. The object must have exactly this shape:
+{
+  "advisorNarrative": "4-6 sentences written in first person as a plain-English financial advisor speaking directly to this investor. Reference at least 3 specific facts from their profile (age, family situation, upcoming expenses, income, goal mode, drop reaction, etc). Explain the overall strategy behind the suggestions — why this mix of securities makes sense for their specific situation. Do not use jargon. Do not give specific buy/sell instructions. Frame everything as educational context. End with one honest caveat relevant to their profile.",
+  "suggestions": [
+    {
+      "ticker": "AAPL",
+      "type": "stock",
+      "reasoning": "Exactly 2 sentences. Sentence 1: what the company/fund does in plain English (no jargon). Sentence 2: why it fits this investor's profile specifically — reference their risk tolerance, hold period, or sector interest.",
+      "portfolioRole": "core growth holding",
+      "retirementLens": {
+        "incomeRole": "Low",
+        "volatility": "Medium",
+        "liquidity": "High",
+        "complexity": "Low",
+        "retirementFit": "One plain sentence about how this fits a retirement-stage investor."
+      },
+      "watchOut": "One sentence under 20 words about the biggest risk for a retirement-stage investor."
+    }
+  ]
+}
 
 Field rules:
 - type must be exactly one of: "stock" | "etf" | "bond_etf" | "reit"
@@ -48,6 +51,12 @@ General rules:
   high = growth/speculative stocks with explanations of why higher volatility fits their horizon
 - If the risk profile is low OR the hold period is short, include at least 2 ETFs, bond ETFs, or REITs.
 - reasoning must be exactly 2 sentences. No more. No exceptions.
+
+Account type awareness:
+- If account type is "Taxable brokerage": avoid bond ETFs (tax-inefficient in taxable accounts) and prefer ETFs with low turnover and qualified dividends.
+- If account type is "Roth IRA" or "Traditional IRA": bond ETFs and high-dividend stocks are ideal here since taxes are deferred or eliminated.
+- If account type is "401(k) / employer plan": suggest broad, low-cost index funds and target-date style allocations.
+- Always mention the account type briefly in the reasoning when it meaningfully affects the suggestion.
 `.trim();
 
 const GOAL_MODE_INSTRUCTIONS = {
@@ -69,6 +78,7 @@ function buildUserPrompt(inputs) {
   lines.push(`Risk tolerance: ${inputs.riskProfile}`);
   lines.push(`Goal mode: ${inputs.goalMode}`);
   if (inputs.annualIncome)     lines.push(`Annual income: ${inputs.annualIncome}`);
+  if (inputs.accountType)      lines.push(`Account type: ${inputs.accountType}`);
   if (inputs.employmentStatus) lines.push(`Employment: ${inputs.employmentStatus}`);
   if (inputs.emergencyFund)    lines.push(`Emergency fund: ${inputs.emergencyFund}`);
   if (inputs.existingInvestments?.length) lines.push(`Existing investments: ${inputs.existingInvestments.join(', ')}`);
@@ -265,15 +275,17 @@ export async function getSuggestions(inputs) {
     throw err;
   }
 
-  if (!Array.isArray(parsed) || parsed.length === 0) {
+  if (!parsed.suggestions || !Array.isArray(parsed.suggestions) || parsed.suggestions.length === 0) {
     const err = new Error('AI returned an unexpected format. Please try again.');
     err.statusCode = 502;
     throw err;
   }
 
+  const advisorNarrative = typeof parsed.advisorNarrative === 'string' ? parsed.advisorNarrative.trim() : '';
+
   // Validate and filter to well-formed suggestions
   const TICKER_RE = /^[A-Z]{1,5}$/;
-  return parsed
+  const suggestions = parsed.suggestions
     .filter(
       (s) =>
         s &&
@@ -290,4 +302,6 @@ export async function getSuggestions(inputs) {
       retirementLens: s.retirementLens || null,
       watchOut: s.watchOut || null,
     }));
+
+  return { advisorNarrative, suggestions };
 }

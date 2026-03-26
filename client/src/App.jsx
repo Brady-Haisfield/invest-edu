@@ -4,6 +4,7 @@ import { fetchForecast } from './api/forecast.js';
 import DisclaimerBanner from './components/DisclaimerBanner.jsx';
 import Nav from './components/Nav.jsx';
 import InputForm from './components/InputForm.jsx';
+import OnboardingFlow from './components/OnboardingFlow.jsx';
 import StockGrid from './components/StockGrid.jsx';
 import LoadingState from './components/LoadingState.jsx';
 import ErrorBanner from './components/ErrorBanner.jsx';
@@ -17,9 +18,12 @@ export default function App() {
 
   // Home page state
   const [cards, setCards] = useState(null);
+  const [advisorNarrative, setAdvisorNarrative] = useState(null);
+  const [treasuryRates, setTreasuryRates] = useState(null);
   const [lastInputs, setLastInputs] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [showFullForm, setShowFullForm] = useState(false);
 
   // Forecast page state
   const [forecast, setForecast] = useState(null);
@@ -58,10 +62,14 @@ export default function App() {
     setLoading(true);
     setError(null);
     setCards(null);
+    setAdvisorNarrative(null);
+    setTreasuryRates(null);
     setLastInputs(formData);
     try {
-      const result = await fetchSuggestions(formData);
-      setCards(result);
+      const { cards: newCards, advisorNarrative: narrative, treasuryRates: rates } = await fetchSuggestions(formData);
+      setCards(newCards);
+      setAdvisorNarrative(narrative);
+      setTreasuryRates(rates);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -104,19 +112,38 @@ export default function App() {
         {currentPage === 'home' && (
           <div className="layout-grid" style={{ gridTemplateColumns: '300px 1fr' }}>
             <div className="sidebar">
-              <div style={{ marginBottom: 'var(--space-5)' }}>
-                <h2 className="section-label" style={{ marginBottom: 'var(--space-2)' }}>Your Profile</h2>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  Tell us where you are. We'll surface options that fit.
-                </p>
-              </div>
-              <InputForm onSubmit={handleSubmit} disabled={loading} />
+              {showFullForm ? (
+                <>
+                  <div style={{ marginBottom: 'var(--space-5)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
+                      <h2 className="section-label">Your Profile</h2>
+                      <button
+                        type="button"
+                        onClick={() => setShowFullForm(false)}
+                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 11, cursor: 'pointer', textDecoration: 'underline' }}
+                      >
+                        ← Step-by-step
+                      </button>
+                    </div>
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                      Tell us where you are. We'll surface options that fit.
+                    </p>
+                  </div>
+                  <InputForm onSubmit={handleSubmit} disabled={loading} />
+                </>
+              ) : (
+                <OnboardingFlow
+                  onSubmit={handleSubmit}
+                  disabled={loading}
+                  onShowFullForm={() => setShowFullForm(true)}
+                />
+              )}
             </div>
 
             <div>
               {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
               {loading && <LoadingState />}
-              {cards && !loading && <StockGrid cards={cards} inputs={lastInputs} />}
+              {cards && !loading && <StockGrid cards={cards} inputs={lastInputs} advisorNarrative={advisorNarrative} treasuryRates={treasuryRates} />}
               {!loading && !error && !cards && (
                 <div style={{ padding: 'var(--space-8)', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
                   <h2 style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontSize: 28, lineHeight: 1.3, fontWeight: 400 }}>

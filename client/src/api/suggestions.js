@@ -6,5 +6,5 @@ export async function fetchSuggestions(formData) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Request failed');
-  return data.cards;
+  return { cards: data.cards, advisorNarrative: data.advisorNarrative ?? null, treasuryRates: data.treasuryRates ?? null };
 }

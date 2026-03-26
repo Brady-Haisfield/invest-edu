@@ -17,7 +17,7 @@ function cleanStringArray(val) {
 export function validateInputs(body) {
   const {
     riskProfile, amount, holdPeriod, sectors, goalMode, age,
-    annualIncome, employmentStatus, emergencyFund, existingInvestments,
+    annualIncome, accountType, employmentStatus, emergencyFund, existingInvestments,
     familySituation, homeownership, upcomingExpenses,
     priorities, dropReaction, themes, involvement, investmentPurpose,
   } = body;
@@ -48,6 +48,7 @@ export function validateInputs(body) {
   return {
     riskProfile, amount: amt, holdPeriod, sectors: cleanSectors, goalMode: cleanGoalMode, age: cleanAge,
     annualIncome:       cleanString(annualIncome),
+    accountType:        cleanString(accountType),
     employmentStatus:   cleanString(employmentStatus),
     emergencyFund:      cleanString(emergencyFund),
     existingInvestments: cleanStringArray(existingInvestments),
