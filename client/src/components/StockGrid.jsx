@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import StockCard from './StockCard.jsx';
 import AllocationBuilder from './AllocationBuilder.jsx';
 import { calcProjection } from '../utils/projections.js';
+import { savePlan } from '../services/auth.js';
 
 const BUCKETS = [
   {
@@ -317,7 +319,24 @@ function RedFlagsPanel({ inputs }) {
   );
 }
 
-export default function StockGrid({ cards, inputs, advisorNarrative, treasuryRates }) {
+export default function StockGrid({ cards, inputs, advisorNarrative, treasuryRates, user, token, onSignInClick }) {
+  const [savingPlan, setSavingPlan] = useState(false);
+  const [planSaved, setPlanSaved]   = useState(false);
+
+  async function handleSavePlan() {
+    if (!token) return;
+    setSavingPlan(true);
+    try {
+      const planName = `Plan — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+      await savePlan(token, { planName, inputs, cards, advisorNarrative: advisorNarrative ?? null });
+      setPlanSaved(true);
+      setTimeout(() => setPlanSaved(false), 2000);
+    } catch {
+      // non-critical
+    } finally {
+      setSavingPlan(false);
+    }
+  }
   const buckets = BUCKETS.map((b) => ({
     ...b,
     count: cards.filter((c) => c.portfolioRole && b.roles.includes(c.portfolioRole)).length,
@@ -426,6 +445,43 @@ export default function StockGrid({ cards, inputs, advisorNarrative, treasuryRat
               Based on your complete profile · Educational only · Not financial advice
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Save plan */}
+      {inputs?.amount > 0 && (
+        <div style={{ marginTop: 'var(--space-5)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          {user ? (
+            <button
+              type="button"
+              onClick={handleSavePlan}
+              disabled={savingPlan || planSaved}
+              style={{
+                padding: '8px 16px',
+                background: 'none',
+                border: `1px solid ${planSaved ? 'var(--accent-green)' : 'var(--border-2)'}`,
+                borderRadius: 'var(--radius)',
+                color: planSaved ? 'var(--accent-green-bright)' : 'var(--text-secondary)',
+                fontSize: 11, cursor: savingPlan || planSaved ? 'default' : 'pointer',
+                fontFamily: "'DM Mono', monospace",
+                transition: 'border-color 0.2s, color 0.2s',
+              }}
+            >
+              {planSaved ? 'Plan saved!' : savingPlan ? 'Saving...' : 'Save This Plan'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onSignInClick}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                fontSize: 11, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace",
+                padding: 0, textDecoration: 'underline',
+              }}
+            >
+              Sign in to save this plan
+            </button>
+          )}
         </div>
       )}
 

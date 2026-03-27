@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import suggestionsRouter from './routes/suggestions.js';
 import forecastRouter from './routes/forecast.js';
 import searchRouter from './routes/search.js';
+import authRouter from './routes/auth.js';
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ app.use(express.json());
 app.use('/api/suggestions', suggestionsRouter);
 app.use('/api/forecast', forecastRouter);
 app.use('/api/search', searchRouter);
+app.use('/api/auth', authRouter);
 
 app.use((err, req, res, next) => {
   console.error('[Error]', err.message);

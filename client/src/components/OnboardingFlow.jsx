@@ -55,21 +55,23 @@ const SECTOR_OPTIONS = [
   'Consumer', 'Utilities', 'Real Estate', 'Industrials', 'Materials', 'No preference',
 ];
 
-export default function OnboardingFlow({ onSubmit, disabled, onShowFullForm }) {
+export default function OnboardingFlow({ onSubmit, disabled, onShowFullForm, defaultValues, submitLabel }) {
+  const dv = defaultValues ?? {};
+
   const [step, setStep]       = useState(0);
   const [visible, setVisible] = useState(true);
   const [error, setError]     = useState('');
 
-  // Answers
-  const [age, setAge]                     = useState('');
-  const [goalMode, setGoalMode]           = useState('growing-wealth');
-  const [amount, setAmount]               = useState('');
-  const [riskProfile, setRiskProfile]     = useState('medium');
-  const [annualIncome, setAnnualIncome]   = useState('');
-  const [accountType, setAccountType]     = useState('');
-  const [familySituation, setFamilySituation] = useState('');
-  const [upcomingExpenses, setUpcomingExpenses] = useState([]);
-  const [sectors, setSectors]             = useState([]);
+  // Answers — initialized from defaultValues when provided
+  const [age, setAge]                     = useState(dv.age != null ? String(dv.age) : '');
+  const [goalMode, setGoalMode]           = useState(dv.goalMode ?? 'growing-wealth');
+  const [amount, setAmount]               = useState(dv.amount != null ? String(dv.amount) : '');
+  const [riskProfile, setRiskProfile]     = useState(dv.riskProfile ?? 'medium');
+  const [annualIncome, setAnnualIncome]   = useState(dv.annualIncome ?? '');
+  const [accountTypes, setAccountTypes]   = useState(dv.accountTypes ?? []);
+  const [familySituation, setFamilySituation] = useState(dv.familySituation ?? '');
+  const [upcomingExpenses, setUpcomingExpenses] = useState(dv.upcomingExpenses ?? []);
+  const [sectors, setSectors]             = useState(dv.sectors ?? []);
 
   function goTo(nextStep) {
     setVisible(false);
@@ -109,7 +111,7 @@ export default function OnboardingFlow({ onSubmit, disabled, onShowFullForm }) {
         amount: Number(amount),
         riskProfile,
         annualIncome,
-        accountType,
+        accountTypes,
         familySituation,
         upcomingExpenses,
         sectors: cleanSectors,
@@ -238,9 +240,11 @@ export default function OnboardingFlow({ onSubmit, disabled, onShowFullForm }) {
             {ACCOUNT_OPTIONS.map((opt) => (
               <button
                 type="button" key={opt}
-                className={`chip${accountType === opt ? ' active' : ''}`}
+                className={`chip${accountTypes.includes(opt) ? ' active' : ''}`}
                 style={{ textAlign: 'left', padding: '10px 14px', fontSize: 13 }}
-                onClick={() => setAccountType(accountType === opt ? '' : opt)}
+                onClick={() => setAccountTypes((prev) =>
+                  prev.includes(opt) ? prev.filter((x) => x !== opt) : [...prev, opt]
+                )}
               >{opt}</button>
             ))}
           </div>
@@ -293,7 +297,7 @@ export default function OnboardingFlow({ onSubmit, disabled, onShowFullForm }) {
 
   const { question, subtitle } = STEP_META[step];
   const isLast = step === TOTAL_STEPS - 1;
-  const pct    = (step / TOTAL_STEPS) * 100;
+  const pct    = Math.round(((step + 1) / TOTAL_STEPS) * 100);
 
   return (
     <div>
@@ -347,7 +351,7 @@ export default function OnboardingFlow({ onSubmit, disabled, onShowFullForm }) {
                 }} />
                 Analyzing...
               </span>
-            ) : isLast ? 'Find My Options →' : 'Continue →'}
+            ) : isLast ? (submitLabel ?? 'Find My Plan →') : 'Continue →'}
           </button>
 
           {step > 0 && (
@@ -361,8 +365,8 @@ export default function OnboardingFlow({ onSubmit, disabled, onShowFullForm }) {
           )}
         </div>
 
-        {/* Skip to full form — only on step 1 */}
-        {step === 0 && (
+        {/* Skip to full form — only on step 0 and when the callback is provided */}
+        {step === 0 && onShowFullForm && (
           <button
             type="button"
             onClick={onShowFullForm}

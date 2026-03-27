@@ -1,6 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { fetchSuggestions } from './api/suggestions.js';
 import { fetchForecast } from './api/forecast.js';
+import { getMe, saveProfile } from './services/auth.js';
 import DisclaimerBanner from './components/DisclaimerBanner.jsx';
 import Nav from './components/Nav.jsx';
 import InputForm from './components/InputForm.jsx';
@@ -12,10 +13,68 @@ import ForecastForm from './components/ForecastForm.jsx';
 import ForecastResult from './components/ForecastResult.jsx';
 import ForecastLoadingState from './components/ForecastLoadingState.jsx';
 import ForecastChart from './components/ForecastChart.jsx';
-import RefinePlanPanel from './components/RefinePlanPanel.jsx';
+import AuthModal from './components/AuthModal.jsx';
+import SavedPlansModal from './components/SavedPlansModal.jsx';
+import LandingPage from './components/LandingPage.jsx';
+import DashboardPanel from './components/DashboardPanel.jsx';
+import EditProfileModal from './components/EditProfileModal.jsx';
+
+const INITIAL_REFINE = {
+  numChildren:            '',
+  childrenAges:           '',
+  monthlyDependentCosts:  '',
+  supportingAgingParents: null,
+  totalSavings:           '',
+  liquidityFloor:         '',
+  monthlyTakeHome:        '',
+  monthlyExpenses:        '',
+  hasPension:             null,
+  expectedSocialSecurity: '',
+  targetRetirementAge:    '',
+};
+
+function buildMergedInputs(profileInputs, refineInputs) {
+  if (!profileInputs) return null;
+  const r = refineInputs ?? INITIAL_REFINE;
+  const takeHome  = Number(r.monthlyTakeHome) || 0;
+  const expenses  = Number(r.monthlyExpenses) || 0;
+  const showSurplus = r.monthlyTakeHome !== '' || r.monthlyExpenses !== '';
+  return {
+    ...profileInputs,
+    numChildren:             r.numChildren !== '' ? Number(r.numChildren) : null,
+    childrenAges:            r.childrenAges || null,
+    monthlyDependentCosts:   r.monthlyDependentCosts !== '' ? Number(r.monthlyDependentCosts) : null,
+    supportingAgingParents:  r.supportingAgingParents || null,
+    totalSavings:            r.totalSavings !== '' ? Number(r.totalSavings) : null,
+    liquidityFloor:          r.liquidityFloor !== '' ? Number(r.liquidityFloor) : null,
+    monthlyTakeHome:         r.monthlyTakeHome !== '' ? Number(r.monthlyTakeHome) : null,
+    monthlyExpenses:         r.monthlyExpenses !== '' ? Number(r.monthlyExpenses) : null,
+    monthlySurplus:          showSurplus ? (takeHome - expenses) : null,
+    hasPension:              r.hasPension || null,
+    expectedSocialSecurity:  r.expectedSocialSecurity !== '' ? Number(r.expectedSocialSecurity) : null,
+    targetRetirementAge:     r.targetRetirementAge !== '' ? Number(r.targetRetirementAge) : null,
+  };
+}
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState('home');
+
+  // Auth state
+  const [user, setUser]                   = useState(null);
+  const [token, setToken]                 = useState(null);
+  const [authChecked, setAuthChecked]     = useState(false);
+  const [authModalTab, setAuthModalTab]   = useState('signin');
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showSavedPlans, setShowSavedPlans] = useState(false);
+  const [toast, setToast]                 = useState(null);
+
+  // Profile/dashboard state
+  const [hasProfile, setHasProfile]       = useState(false);
+  const [profileInputs, setProfileInputs] = useState(null);
+  const [refineInputs, setRefineInputs]   = useState(INITIAL_REFINE);
+  const [isAutoUpdating, setIsAutoUpdating] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [showFullForm, setShowFullForm]   = useState(false);
 
   // Home page state
   const [cards, setCards] = useState(null);
@@ -24,7 +83,6 @@ export default function App() {
   const [lastInputs, setLastInputs] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [showFullForm, setShowFullForm] = useState(false);
 
   // Forecast page state
   const [forecast, setForecast] = useState(null);
@@ -36,6 +94,245 @@ export default function App() {
   const [forecastQuote, setForecastQuote] = useState(null);
   const [forecastStockPE, setForecastStockPE] = useState(null);
   const [forecastSectorPE, setForecastSectorPE] = useState(null);
+
+  // Refs to track latest values in async callbacks
+  const tokenRef        = useRef(token);
+  const profileRef      = useRef(profileInputs);
+  const refineRef       = useRef(refineInputs);
+  const refineChangedRef = useRef(false);
+
+  useEffect(() => { tokenRef.current = token; },           [token]);
+  useEffect(() => { profileRef.current = profileInputs; }, [profileInputs]);
+  useEffect(() => { refineRef.current = refineInputs; },   [refineInputs]);
+
+  // Auto-fetch on initial load when profile exists but no cards were cached in DB
+  useEffect(() => {
+    if (!authChecked || !hasProfile || cards !== null) return;
+    const merged = buildMergedInputs(profileRef.current, refineRef.current);
+    if (!merged) return;
+    setLoading(true);
+    setError(null);
+    setTreasuryRates(null);
+    setLastInputs(merged);
+    fetchSuggestions(merged)
+      .then(({ cards: c, advisorNarrative: n, treasuryRates: r }) => {
+        setCards(c);
+        setAdvisorNarrative(n);
+        setTreasuryRates(r);
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [authChecked, hasProfile]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Restore auth from localStorage on mount and verify token
+  useEffect(() => {
+    const savedToken = localStorage.getItem('meridian_token');
+    const savedUser  = localStorage.getItem('meridian_user');
+    if (savedToken && savedUser) {
+      setToken(savedToken);
+      setUser(JSON.parse(savedUser));
+      getMe(savedToken)
+        .then((meData) => {
+          if (meData.savedProfile) {
+            const { inputs, refineInputs: savedRefine, lastCards, lastAdvisorNarrative } = meData.savedProfile;
+            setProfileInputs(inputs);
+            setHasProfile(true);
+            if (savedRefine) setRefineInputs(savedRefine);
+            if (lastCards) {
+              setCards(lastCards);
+              setLastInputs(buildMergedInputs(inputs, savedRefine));
+              setAdvisorNarrative(lastAdvisorNarrative ?? null);
+            }
+          }
+        })
+        .catch(() => {
+          localStorage.removeItem('meridian_token');
+          localStorage.removeItem('meridian_user');
+          setToken(null);
+          setUser(null);
+        })
+        .finally(() => setAuthChecked(true));
+    } else {
+      setAuthChecked(true);
+    }
+  }, []);
+
+  // Auto-clear toast after 3 seconds
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // Auto-save and auto-run when refine inputs change
+  useEffect(() => {
+    if (!refineChangedRef.current) return;
+
+    const saveTimer = setTimeout(() => {
+      const tok = tokenRef.current;
+      const prof = profileRef.current;
+      if (tok && prof) {
+        saveProfile(tok, {
+          inputs: prof,
+          refineInputs: refineRef.current,
+          lastCards: null,
+          lastAdvisorNarrative: null,
+        }).catch(() => {});
+      }
+    }, 500);
+
+    const runTimer = setTimeout(async () => {
+      const prof = profileRef.current;
+      const ri   = refineRef.current;
+      const tok  = tokenRef.current;
+      if (!prof) return;
+
+      setIsAutoUpdating(true);
+      const merged = buildMergedInputs(prof, ri);
+      const result = await handleSubmitCore(merged);
+      setIsAutoUpdating(false);
+
+      if (result && tok) {
+        saveProfile(tok, {
+          inputs: prof,
+          refineInputs: ri,
+          lastCards: result.cards,
+          lastAdvisorNarrative: result.advisorNarrative ?? null,
+        }).catch(() => {});
+      }
+    }, 1000);
+
+    return () => {
+      clearTimeout(saveTimer);
+      clearTimeout(runTimer);
+    };
+  }, [refineInputs]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleAuthSuccess(authUser, authToken) {
+    setUser(authUser);
+    setToken(authToken);
+    setShowAuthModal(false);
+    try {
+      const meData = await getMe(authToken);
+      if (meData.savedProfile) {
+        const { inputs, refineInputs: savedRefine, lastCards, lastAdvisorNarrative } = meData.savedProfile;
+        setProfileInputs(inputs);
+        setHasProfile(true);
+        if (savedRefine) setRefineInputs(savedRefine);
+        if (lastCards) {
+          setCards(lastCards);
+          setLastInputs(buildMergedInputs(inputs, savedRefine));
+          setAdvisorNarrative(lastAdvisorNarrative ?? null);
+        } else {
+          // No cached results — fetch fresh
+          const merged = buildMergedInputs(inputs, savedRefine);
+          const result = await handleSubmitCore(merged);
+          if (result) {
+            saveProfile(authToken, {
+              inputs,
+              refineInputs: savedRefine,
+              lastCards: result.cards,
+              lastAdvisorNarrative: result.advisorNarrative ?? null,
+            }).catch(() => {});
+          }
+        }
+      }
+      // No savedProfile → user stays on onboarding (hasProfile = false)
+    } catch {
+      // non-critical
+    }
+  }
+
+  function signOut() {
+    localStorage.removeItem('meridian_token');
+    localStorage.removeItem('meridian_user');
+    setUser(null);
+    setToken(null);
+    setCards(null);
+    setLastInputs(null);
+    setAdvisorNarrative(null);
+    setHasProfile(false);
+    setProfileInputs(null);
+    setRefineInputs(INITIAL_REFINE);
+    refineChangedRef.current = false;
+  }
+
+  function handleLoadPlan(plan) {
+    setCards(plan.cards);
+    setLastInputs(plan.inputs);
+    setAdvisorNarrative(plan.advisorNarrative ?? null);
+    setTreasuryRates(null);
+    setCurrentPage('home');
+  }
+
+  // Core submit — returns { cards, advisorNarrative } or null on error
+  async function handleSubmitCore(formData) {
+    setLoading(true);
+    setError(null);
+    setCards(null);
+    setAdvisorNarrative(null);
+    setTreasuryRates(null);
+    setLastInputs(formData);
+    try {
+      const { cards: newCards, advisorNarrative: narrative, treasuryRates: rates } = await fetchSuggestions(formData);
+      setCards(newCards);
+      setAdvisorNarrative(narrative);
+      setTreasuryRates(rates);
+      return { cards: newCards, advisorNarrative: narrative };
+    } catch (err) {
+      setError(err.message);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // First-time setup: called when new user completes onboarding
+  async function handleFirstSetup(formData) {
+    setProfileInputs(formData);
+    setHasProfile(true);
+    refineChangedRef.current = false;
+    const result = await handleSubmitCore(formData);
+    const tok = tokenRef.current;
+    if (result && tok) {
+      saveProfile(tok, {
+        inputs: formData,
+        refineInputs: INITIAL_REFINE,
+        lastCards: result.cards,
+        lastAdvisorNarrative: result.advisorNarrative ?? null,
+      }).catch(() => {});
+    }
+  }
+
+  // Edit profile save
+  async function handleEditProfileSave(formData) {
+    setProfileInputs(formData);
+    setShowEditProfile(false);
+    refineChangedRef.current = false;
+    const ri  = refineRef.current;
+    const tok = tokenRef.current;
+    const merged = buildMergedInputs(formData, ri);
+    const result = await handleSubmitCore(merged);
+    if (result && tok) {
+      saveProfile(tok, {
+        inputs: formData,
+        refineInputs: ri,
+        lastCards: result.cards,
+        lastAdvisorNarrative: result.advisorNarrative ?? null,
+      }).catch(() => {});
+    }
+  }
+
+  // Called by DashboardPanel on any field change
+  function handleRefineChange(updates) {
+    refineChangedRef.current = true;
+    setRefineInputs((prev) => ({ ...prev, ...updates }));
+  }
+
+  function openAuthModal(tab) {
+    setAuthModalTab(tab);
+    setShowAuthModal(true);
+  }
 
   // Ref-based handshake: decouple loading animation from API response timing
   const pendingResultRef = useRef(null);
@@ -56,25 +353,6 @@ export default function App() {
     if (pendingResultRef.current) {
       applyResult(pendingResultRef.current);
       pendingResultRef.current = null;
-    }
-  }
-
-  async function handleSubmit(formData) {
-    setLoading(true);
-    setError(null);
-    setCards(null);
-    setAdvisorNarrative(null);
-    setTreasuryRates(null);
-    setLastInputs(formData);
-    try {
-      const { cards: newCards, advisorNarrative: narrative, treasuryRates: rates } = await fetchSuggestions(formData);
-      setCards(newCards);
-      setAdvisorNarrative(narrative);
-      setTreasuryRates(rates);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -100,10 +378,73 @@ export default function App() {
     }
   }
 
+  // Avoid flash: wait for localStorage token check before rendering
+  if (!authChecked) return null;
+
+  // Not logged in → show landing page
+  if (!user) {
+    return (
+      <div style={{ minHeight: '100vh' }}>
+        {showAuthModal && (
+          <AuthModal
+            defaultTab={authModalTab}
+            onSuccess={handleAuthSuccess}
+            onClose={() => setShowAuthModal(false)}
+          />
+        )}
+        <LandingPage
+          onRegister={() => openAuthModal('register')}
+          onSignIn={() => openAuthModal('signin')}
+        />
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: '100vh' }}>
+      {/* Auth modals */}
+      {showAuthModal && (
+        <AuthModal
+          defaultTab={authModalTab}
+          onSuccess={handleAuthSuccess}
+          onClose={() => setShowAuthModal(false)}
+        />
+      )}
+      {showSavedPlans && token && (
+        <SavedPlansModal token={token} onClose={() => setShowSavedPlans(false)} onLoad={handleLoadPlan} />
+      )}
+      {showEditProfile && profileInputs && (
+        <EditProfileModal
+          profileInputs={profileInputs}
+          onSave={handleEditProfileSave}
+          onClose={() => setShowEditProfile(false)}
+        />
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 300,
+          background: 'var(--bg-card)', border: '1px solid var(--accent-green)',
+          borderRadius: 'var(--radius)', padding: '10px 20px',
+          fontSize: 12, color: 'var(--accent-green-bright)', fontFamily: "'DM Mono', monospace",
+          boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+          pointerEvents: 'none',
+        }}>
+          {toast}
+        </div>
+      )}
+
       {/* Header */}
-      <Nav currentPage={currentPage} onNavigate={setCurrentPage} />
+      <Nav
+        currentPage={currentPage}
+        onNavigate={setCurrentPage}
+        user={user}
+        onSignIn={() => openAuthModal('signin')}
+        onSignOut={signOut}
+        onShowSavedPlans={() => setShowSavedPlans(true)}
+        onEditProfile={() => setShowEditProfile(true)}
+      />
 
       <DisclaimerBanner />
 
@@ -113,61 +454,87 @@ export default function App() {
         {currentPage === 'home' && (
           <div className="layout-grid" style={{ gridTemplateColumns: '300px 1fr' }}>
             <div className="sidebar">
-              {showFullForm ? (
-                <>
-                  <div style={{ marginBottom: 'var(--space-5)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
-                      <h2 className="section-label">Your Profile</h2>
-                      <button
-                        type="button"
-                        onClick={() => setShowFullForm(false)}
-                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 11, cursor: 'pointer', textDecoration: 'underline' }}
-                      >
-                        ← Step-by-step
-                      </button>
-                    </div>
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                      Tell us where you are. We'll surface options that fit.
-                    </p>
-                  </div>
-                  <InputForm onSubmit={handleSubmit} disabled={loading} />
-                </>
-              ) : (
-                <OnboardingFlow
-                  onSubmit={handleSubmit}
+              {hasProfile ? (
+                /* Returning user: always show DashboardPanel */
+                <DashboardPanel
+                  profileInputs={profileInputs}
+                  refineInputs={refineInputs}
+                  onRefineChange={handleRefineChange}
+                  isAutoUpdating={isAutoUpdating || loading}
                   disabled={loading}
-                  onShowFullForm={() => setShowFullForm(true)}
+                  onEditProfile={() => setShowEditProfile(true)}
                 />
-              )}
-              {cards && !loading && (
-                <RefinePlanPanel inputs={lastInputs} onSubmit={handleSubmit} disabled={loading} />
+              ) : (
+                /* New user: show onboarding once */
+                <>
+                  {showFullForm ? (
+                    <>
+                      <div style={{ marginBottom: 'var(--space-5)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
+                          <h2 className="section-label">Your Profile</h2>
+                          <button
+                            type="button"
+                            onClick={() => setShowFullForm(false)}
+                            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 11, cursor: 'pointer', textDecoration: 'underline' }}
+                          >
+                            ← Step-by-step
+                          </button>
+                        </div>
+                        <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                          Tell us where you are. We'll surface options that fit.
+                        </p>
+                      </div>
+                      <InputForm onSubmit={handleFirstSetup} disabled={loading} />
+                    </>
+                  ) : (
+                    <OnboardingFlow
+                      onSubmit={handleFirstSetup}
+                      disabled={loading}
+                      onShowFullForm={() => setShowFullForm(true)}
+                    />
+                  )}
+                </>
               )}
             </div>
 
             <div>
               {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
               {loading && <LoadingState />}
-              {cards && !loading && <StockGrid cards={cards} inputs={lastInputs} advisorNarrative={advisorNarrative} treasuryRates={treasuryRates} />}
+              {cards && !loading && (
+                <StockGrid
+                  cards={cards}
+                  inputs={lastInputs}
+                  advisorNarrative={advisorNarrative}
+                  treasuryRates={treasuryRates}
+                  user={user}
+                  token={token}
+                  onSignInClick={() => setShowAuthModal(true)}
+                />
+              )}
               {!loading && !error && !cards && (
                 <div style={{ padding: 'var(--space-8)', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
                   <h2 style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontSize: 28, lineHeight: 1.3, fontWeight: 400 }}>
-                    Explore options that fit where you are
+                    {hasProfile ? 'Updating your results…' : 'Explore options that fit where you are'}
                   </h2>
-                  <p style={{ fontSize: 14, color: 'var(--text-muted)', maxWidth: 420, lineHeight: 1.6 }}>
-                    Tell us your risk tolerance, how long you want to hold, and what sectors interest you. We'll suggest stocks, ETFs, REITs, and bond funds that fit your profile — and explain why each one makes sense.
-                  </p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
-                    {[
-                      'Stocks, ETFs, REITs, and bond funds — matched to your profile',
-                      'Real market prices pulled live',
-                      'Plain-English explanations — no jargon',
-                    ].map((text) => (
-                      <div key={text} style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
-                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', marginTop: 6, flexShrink: 0 }} />
-                        <span style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{text}</span>
+                  {!hasProfile && (
+                    <>
+                      <p style={{ fontSize: 14, color: 'var(--text-muted)', maxWidth: 420, lineHeight: 1.6 }}>
+                        Tell us your risk tolerance, how long you want to hold, and what sectors interest you. We'll suggest stocks, ETFs, REITs, and bond funds that fit your profile — and explain why each one makes sense.
+                      </p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
+                        {[
+                          'Stocks, ETFs, REITs, and bond funds — matched to your profile',
+                          'Real market prices pulled live',
+                          'Plain-English explanations — no jargon',
+                        ].map((text) => (
+                          <div key={text} style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+                            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', marginTop: 6, flexShrink: 0 }} />
+                            <span style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{text}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>

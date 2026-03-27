@@ -53,9 +53,10 @@ General rules:
 - reasoning must be exactly 2 sentences. No more. No exceptions.
 
 Account type awareness:
-- If account type is "Taxable brokerage": avoid bond ETFs (tax-inefficient in taxable accounts) and prefer ETFs with low turnover and qualified dividends.
-- If account type is "Roth IRA" or "Traditional IRA": bond ETFs and high-dividend stocks are ideal here since taxes are deferred or eliminated.
-- If account type is "401(k) / employer plan": suggest broad, low-cost index funds and target-date style allocations.
+- If account types include "Taxable brokerage": avoid bond ETFs (tax-inefficient in taxable accounts) and prefer ETFs with low turnover and qualified dividends.
+- If account types include "Roth IRA" or "Traditional IRA": bond ETFs and high-dividend stocks are ideal here since taxes are deferred or eliminated.
+- If account types include "401(k) / employer plan": suggest broad, low-cost index funds and target-date style allocations.
+- If multiple account types are selected, tailor suggestions to work across all of them. Prioritize tax-efficient placements — bond ETFs and high-dividend stocks in tax-advantaged accounts (IRA/401k), growth ETFs in either, low-turnover index funds in taxable accounts.
 - Always mention the account type briefly in the reasoning when it meaningfully affects the suggestion.
 
 Deeper financial picture (if provided):
@@ -86,7 +87,7 @@ function buildUserPrompt(inputs) {
   lines.push(`Risk tolerance: ${inputs.riskProfile}`);
   lines.push(`Goal mode: ${inputs.goalMode}`);
   if (inputs.annualIncome)     lines.push(`Annual income: ${inputs.annualIncome}`);
-  if (inputs.accountType)      lines.push(`Account type: ${inputs.accountType}`);
+  if (inputs.accountTypes?.length) lines.push(`Account types: ${inputs.accountTypes.join(', ')}`);
   if (inputs.employmentStatus) lines.push(`Employment: ${inputs.employmentStatus}`);
   if (inputs.emergencyFund)    lines.push(`Emergency fund: ${inputs.emergencyFund}`);
   if (inputs.existingInvestments?.length) lines.push(`Existing investments: ${inputs.existingInvestments.join(', ')}`);
