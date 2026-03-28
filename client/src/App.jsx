@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { fetchSuggestions } from './api/suggestions.js';
+import { fetchSuggestions, fetchMarketRates } from './api/suggestions.js';
 import { fetchForecast } from './api/forecast.js';
 import { getMe, saveProfile } from './services/auth.js';
 import DisclaimerBanner from './components/DisclaimerBanner.jsx';
@@ -155,6 +155,11 @@ export default function App() {
               setAdvisorNarrative(lastAdvisorNarrative ?? null);
               setPlanIsSaved(true);
               console.log('[mount] restored', lastCards.length, 'cards from DB ✓');
+              // Fetch live market rates independently — not bundled with cached cards
+              fetchMarketRates().then((rates) => {
+                console.log('[mount] fetchMarketRates result:', rates);
+                if (rates) setTreasuryRates(rates);
+              });
             } else {
               console.log('[mount] profile found but no cached cards — will auto-fetch');
             }
@@ -242,6 +247,9 @@ export default function App() {
           setLastInputs(buildMergedInputs(inputs, savedRefine));
           setAdvisorNarrative(lastAdvisorNarrative ?? null);
           setPlanIsSaved(true);
+          fetchMarketRates().then((rates) => {
+            if (rates) setTreasuryRates(rates);
+          });
         } else {
           // No cached results — fetch fresh
           const merged = buildMergedInputs(inputs, savedRefine);

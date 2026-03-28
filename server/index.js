@@ -5,6 +5,8 @@ import suggestionsRouter from './routes/suggestions.js';
 import forecastRouter from './routes/forecast.js';
 import searchRouter from './routes/search.js';
 import authRouter from './routes/auth.js';
+import marketRatesRouter from './routes/marketRates.js';
+import testApisRouter from './routes/testApis.js';
 
 dotenv.config();
 
@@ -18,6 +20,8 @@ app.use('/api/suggestions', suggestionsRouter);
 app.use('/api/forecast', forecastRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/market-rates', marketRatesRouter);
+app.use('/api/test-apis', testApisRouter);
 
 app.use((err, req, res, next) => {
   console.error('[Error]', err.message);

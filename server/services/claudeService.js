@@ -34,6 +34,8 @@ no commentary, no extra keys. The object must have exactly this shape:
   ]
 }
 
+RULE 0 — ABSOLUTE: Never suggest mutual funds under any circumstances. Mutual funds include: any Fidelity fund (FXAIX, FZILX, FSPGX, FBALX, FZROX, FXNAX), any Vanguard Admiral share (VTSAX, VFIAX, VBTLX), any ticker ending in X that trades once per day at NAV rather than continuously on an exchange. Only suggest ETFs that trade on NYSE or NASDAQ with real-time prices and individual stocks. If you are uncertain whether a ticker is an ETF or mutual fund, do not suggest it.
+
 Field rules:
 - type must be exactly one of: "stock" | "etf" | "bond_etf" | "reit"
 - portfolioRole must be exactly one of: "core growth holding" | "income-oriented holding" | "defensive sector exposure" | "inflation-sensitive exposure" | "capital-preservation option" | "real estate income exposure" | "broad market exposure"
@@ -313,16 +315,29 @@ export async function getSuggestions(inputs) {
 
   const advisorNarrative = typeof parsed.advisorNarrative === 'string' ? parsed.advisorNarrative.trim() : '';
 
+  // Known mutual fund ticker prefixes / patterns — not exchange-traded, Finnhub can't price them
+  const MUTUAL_FUND_RE = /^(VFIAX|VTSAX|VTIAX|VBTLX|FXAIX|FSPGX|FZILX|FBALX|FDVV|FZROX|FZIPX|FZILX|FXNAX|FNILX)/;
+  // 5-letter tickers ending in X are usually mutual funds (ETFs are typically 3-4 letters)
+  const LIKELY_MUTUAL_FUND_RE = /^[A-Z]{5}X$/;
+
   // Validate and filter to well-formed suggestions
   const TICKER_RE = /^[A-Z]{1,5}$/;
   const suggestions = parsed.suggestions
     .filter(
-      (s) =>
-        s &&
-        typeof s.ticker === 'string' &&
-        TICKER_RE.test(s.ticker) &&
-        typeof s.reasoning === 'string' &&
-        s.reasoning.length > 0
+      (s) => {
+        if (!s || typeof s.ticker !== 'string') return false;
+        if (!TICKER_RE.test(s.ticker)) return false;
+        if (typeof s.reasoning !== 'string' || s.reasoning.length === 0) return false;
+        if (MUTUAL_FUND_RE.test(s.ticker)) {
+          console.warn(`[claudeService] Filtered mutual fund ticker: ${s.ticker}`);
+          return false;
+        }
+        if (LIKELY_MUTUAL_FUND_RE.test(s.ticker)) {
+          console.warn(`[claudeService] Filtered likely mutual fund ticker: ${s.ticker}`);
+          return false;
+        }
+        return true;
+      }
     )
     .map((s) => ({
       ticker: s.ticker,

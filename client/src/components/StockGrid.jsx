@@ -320,6 +320,7 @@ function RedFlagsPanel({ inputs }) {
 }
 
 export default function StockGrid({ cards, inputs, advisorNarrative, treasuryRates, user, token, onSignInClick, planIsSaved, onSavePlanSuccess }) {
+  console.log('[StockGrid] treasuryRates received:', treasuryRates);
   const [savingPlan, setSavingPlan]     = useState(false);
   const [planSaveError, setPlanSaveError] = useState(false);
 

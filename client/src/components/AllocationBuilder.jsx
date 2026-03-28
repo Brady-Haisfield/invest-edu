@@ -184,7 +184,7 @@ export default function AllocationBuilder({ cards, inputs, treasuryRates }) {
               {/* Methodology line + tooltip */}
               <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 3 }}>
                 <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace" }}>
-                  {row.result.dataSource === 'real' ? 'Actual data' : 'Estimated'} · {(row.result.baseRate * 100).toFixed(1)}%/yr
+                  {row.result.dataSource} · {(row.result.baseRate * 100).toFixed(1)}%/yr
                 </span>
                 <button
                   type="button"
@@ -208,7 +208,7 @@ export default function AllocationBuilder({ cards, inputs, treasuryRates }) {
                     </div>
                     <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
                       Data:{' '}
-                      <span style={{ color: row.result.dataSource === 'real' ? 'var(--accent-green-bright)' : 'var(--accent-amber)' }}>
+                      <span style={{ color: row.result.dataSource === 'industry average' ? 'var(--accent-amber)' : 'var(--accent-green-bright)' }}>
                         {row.result.dataSource}
                       </span>
                       {' · '}Range: ~{fmt(row.result.pessimisticValue)} — ~{fmt(row.result.optimisticValue)}
@@ -254,8 +254,13 @@ export default function AllocationBuilder({ cards, inputs, treasuryRates }) {
 
         {/* SPY comparison */}
         {total > 0 && (() => {
-          const spyProjected = Math.round(total * Math.pow(1.10, holdYears));
-          const spyIncome    = Math.round(total * 0.013);
+          const spyRate      = treasuryRates?.spyForwardReturn ?? 0.10;
+          const spyYield     = treasuryRates?.sp500DivYield    ?? 0.013;
+          const spyPct       = (spyRate * 100).toFixed(1);
+          const spyYieldPct  = (spyYield * 100).toFixed(1);
+          console.log('[StockGrid] treasuryRates:', treasuryRates);
+          const spyProjected = Math.round(total * Math.pow(1 + spyRate, holdYears));
+          const spyIncome    = Math.round(total * spyYield);
           const diff         = totalProjected - spyProjected;
           const diffPct      = Math.abs(diff / spyProjected) * 100;
           let insight;
@@ -281,7 +286,7 @@ export default function AllocationBuilder({ cards, inputs, treasuryRates }) {
                   <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace", marginTop: 2 }}>~{fmt(totalIncome)}/yr income</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace", marginBottom: 4 }}>SPY (10%/yr, 1.3% yield)</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace", marginBottom: 4 }}>SPY ({spyPct}%/yr, {spyYieldPct}% yield)</div>
                   <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'DM Mono', monospace", color: 'var(--text-secondary)' }}>~{fmt(spyProjected)}</div>
                   <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace", marginTop: 2 }}>~{fmt(spyIncome)}/yr income</div>
                 </div>

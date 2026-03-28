@@ -85,7 +85,7 @@ function LevelChip({ label, level }) {
 }
 
 export default function StockCard({ card, equalProjection }) {
-  const { ticker, name, price, fiftyTwoWeekLow, fiftyTwoWeekHigh, peRatio, marketCap, sector, reasoning, type, portfolioRole, retirementLens, watchOut } = card;
+  const { ticker, name, price, fiftyTwoWeekLow, fiftyTwoWeekHigh, peRatio, marketCap, sector, reasoning, type, portfolioRole, retirementLens, watchOut, expenseRatio } = card;
   const [lensOpen, setLensOpen] = useState(false);
 
   const typeConf = TYPE_CONFIG[type] || TYPE_CONFIG.stock;
@@ -145,15 +145,31 @@ export default function StockCard({ card, equalProjection }) {
         borderBottom: '1px solid var(--border)',
         padding: 'var(--space-3) 0',
       }}>
-        <div style={{ flex: 1, textAlign: 'center' }}>
-          <div className="section-label" style={{ marginBottom: 3 }}>P/E</div>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>{formatPE(peRatio)}</div>
-        </div>
-        <div style={{ width: 1, background: 'var(--border)' }} />
-        <div style={{ flex: 1, textAlign: 'center' }}>
-          <div className="section-label" style={{ marginBottom: 3 }}>Mkt Cap</div>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>{formatMarketCap(marketCap)}</div>
-        </div>
+        {(type === 'etf' || type === 'bond_etf') && expenseRatio != null ? (
+          <>
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div className="section-label" style={{ marginBottom: 3 }}>Exp. Ratio</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{(expenseRatio * 100).toFixed(2)}%</div>
+            </div>
+            <div style={{ width: 1, background: 'var(--border)' }} />
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div className="section-label" style={{ marginBottom: 3 }}>Mkt Cap</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{formatMarketCap(marketCap)}</div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div className="section-label" style={{ marginBottom: 3 }}>P/E</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{formatPE(peRatio)}</div>
+            </div>
+            <div style={{ width: 1, background: 'var(--border)' }} />
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div className="section-label" style={{ marginBottom: 3 }}>Mkt Cap</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{formatMarketCap(marketCap)}</div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Reasoning */}

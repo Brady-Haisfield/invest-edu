@@ -21,11 +21,11 @@ const BOND_ETF_KNOWN_YIELDS = {
 };
 
 export function calcProjection(card, totalYears, isConservative, treasuryRates) {
-  console.log('[projections] ticker:', card.ticker, '| dividendYield (raw Finnhub %):', card.dividendYield);
+  console.log('[projections] ticker:', card.ticker, '| dividendYield:', card.dividendYield, '| epsGrowthFwd:', card.epsGrowthFwd ?? 'n/a');
   switch (card.type) {
     case 'bond_etf': return calcBondETFProjection(card, totalYears, isConservative, treasuryRates);
     case 'reit':     return calcREITProjection(card, totalYears, isConservative);
-    case 'etf':      return calcETFProjection(card, totalYears, isConservative);
+    case 'etf':      return calcETFProjection(card, totalYears, isConservative, treasuryRates);
     case 'stock':
     default:         return calcStockProjection(card, totalYears, isConservative);
   }
@@ -36,15 +36,28 @@ export function calcProjection(card, totalYears, isConservative, treasuryRates) 
 function calcStockProjection(card, years, isConservative) {
   const divYield = normalizeDivYield(card.dividendYield) ?? 0.018;
 
-  let earningsGrowth = null;
-  if (isValid(card.epsGrowth3Y))    earningsGrowth = card.epsGrowth3Y;
-  else if (isValid(card.revenueGrowth3Y)) earningsGrowth = card.revenueGrowth3Y;
-  else earningsGrowth = 0.065;
+  // Earnings growth priority: FMP forward estimate → Finnhub EPS → Finnhub revenue → fallback
+  let earningsGrowth;
+  let growthSource;
+  if (isValid(card.epsGrowthFwd)) {
+    earningsGrowth = card.epsGrowthFwd;
+    growthSource = 'analyst';
+  } else if (isValid(card.epsGrowth3Y)) {
+    earningsGrowth = card.epsGrowth3Y;
+    growthSource = 'historical';
+  } else if (isValid(card.revenueGrowth3Y)) {
+    earningsGrowth = card.revenueGrowth3Y;
+    growthSource = 'historical';
+  } else {
+    earningsGrowth = 0.065;
+    growthSource = 'industry';
+  }
 
   earningsGrowth = Math.min(0.25, Math.max(-0.15, earningsGrowth));
 
   const bogleReturn = divYield + earningsGrowth;
 
+  // Beta priority: Finnhub → Alpha Vantage (already merged into card.beta by server)
   const riskFree = 0.043;
   const capmReturn = (isValid(card.beta) && card.beta > 0 && card.beta < 3)
     ? riskFree + card.beta * MARKET_PREMIUM
@@ -54,32 +67,61 @@ function calcStockProjection(card, years, isConservative) {
   rate = Math.min(0.20, Math.max(0.01, rate));
   if (isConservative) rate *= 0.80;
 
-  const dataSource = (isValid(card.epsGrowth3Y) || isValid(card.revenueGrowth3Y)) && isValid(card.beta)
-    ? 'real' : 'estimated';
+  // dataSource describes what data was actually available
+  const hasGrowthData = growthSource !== 'industry';
+  const hasBeta = isValid(card.beta);
+
+  let dataSource;
+  if (growthSource === 'analyst' && hasBeta) dataSource = 'analyst estimates + market data';
+  else if (hasGrowthData && hasBeta)        dataSource = 'historical financials + market data';
+  else if (hasGrowthData || hasBeta)        dataSource = 'partial market data';
+  else                                       dataSource = 'industry averages';
+
+  const methodNote = growthSource === 'analyst'
+    ? 'analyst consensus EPS forecast'
+    : growthSource === 'historical'
+      ? '3-year historical EPS/revenue growth'
+      : 'industry-average growth rate';
 
   return buildResult(card, rate, divYield, years, dataSource,
-    'Bogle model (dividend yield + earnings growth) blended with CAPM');
+    `Bogle model (dividend yield + ${methodNote}) blended with CAPM`);
 }
 
-// ─── ETFs: CAPM primary, actual yield ─────────────────────────────────────────
+// ─── ETFs: CAPM primary, Shiller CAPE for SPY/broad market ───────────────────
 
-function calcETFProjection(card, years, isConservative) {
-  const divYield = BOND_ETF_KNOWN_YIELDS[card.ticker] ?? normalizeDivYield(card.dividendYield) ?? 0.025;
+function calcETFProjection(card, years, isConservative, treasuryRates) {
+  // FMP dividend yield (already merged into card.dividendYield by server) or known yields table
+  const divYield = BOND_ETF_KNOWN_YIELDS[card.ticker]
+    ?? normalizeDivYield(card.dividendYield)
+    ?? 0.025;
 
   const riskFree = 0.043;
-  const capmReturn = (isValid(card.beta) && card.beta > 0 && card.beta < 3)
-    ? riskFree + card.beta * MARKET_PREMIUM
-    : MARKET_LONG_RUN;
+  let capmReturn;
+  if (isValid(card.beta) && card.beta > 0 && card.beta < 3) {
+    capmReturn = riskFree + card.beta * MARKET_PREMIUM;
+  } else if (treasuryRates?.spyForwardReturn) {
+    // Use Shiller CAPE-derived forward return for broad market ETFs
+    capmReturn = treasuryRates.spyForwardReturn;
+  } else {
+    capmReturn = MARKET_LONG_RUN;
+  }
 
   const boglePartial = divYield;
   let rate = (boglePartial * 0.3) + (capmReturn * 0.7);
   rate = Math.min(0.18, Math.max(0.01, rate));
   if (isConservative) rate *= 0.82;
 
-  const dataSource = isValid(card.beta) && isValid(card.dividendYield) ? 'real' : 'estimated';
+  const hasRealData = isValid(card.beta) && isValid(card.dividendYield);
+  const usedCape = !isValid(card.beta) && !!treasuryRates?.spyForwardReturn;
+  const dataSource = hasRealData ? 'market data'
+    : usedCape ? 'Shiller CAPE market estimate'
+    : 'industry average';
 
-  return buildResult(card, rate, divYield, years, dataSource,
-    'CAPM risk-adjusted market return using actual beta');
+  const methodNote = usedCape
+    ? 'Shiller CAPE earnings yield + inflation expectations'
+    : 'CAPM risk-adjusted market return using actual beta';
+
+  return buildResult(card, rate, divYield, years, dataSource, methodNote);
 }
 
 // ─── BOND ETFs: Treasury yield matched to hold period ─────────────────────────
@@ -105,7 +147,7 @@ function calcBondETFProjection(card, years, isConservative, treasuryRates) {
   const optimisticRate  = rate + 0.010;
 
   const incomeYield = actualYield ?? rate;
-  const dataSource  = knownYield ? 'real' : actualYield ? 'real' : 'estimated';
+  const dataSource  = knownYield ? 'known SEC yield' : actualYield ? 'market data' : 'Treasury benchmark';
   const maturityLabel = years <= 2 ? '2' : years <= 5 ? '5' : '10';
 
   return {
@@ -127,7 +169,7 @@ function calcBondETFProjection(card, years, isConservative, treasuryRates) {
 function calcREITProjection(card, years, isConservative) {
   const divYield = normalizeDivYield(card.dividendYield) ?? 0.048;
 
-  let ffoGrowth = null;
+  let ffoGrowth;
   if (isValid(card.revenueGrowth3Y))      ffoGrowth = card.revenueGrowth3Y;
   else if (isValid(card.revenueGrowth5Y)) ffoGrowth = card.revenueGrowth5Y;
   else ffoGrowth = 0.03;
@@ -146,7 +188,7 @@ function calcREITProjection(card, years, isConservative) {
   if (isConservative) rate *= 0.85;
 
   const dataSource = isValid(card.dividendYield) && (isValid(card.revenueGrowth3Y) || isValid(card.revenueGrowth5Y))
-    ? 'real' : 'estimated';
+    ? 'market data' : 'industry average';
 
   return buildResult(card, rate, divYield, years, dataSource,
     'REIT model: dividend yield (70%) + FFO growth proxy (30%), CAPM-adjusted',
