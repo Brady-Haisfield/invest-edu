@@ -21,7 +21,10 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER UNIQUE REFERENCES users(id),
-    profile_data TEXT NOT NULL,
+    profile_data TEXT,
+    refine_data TEXT,
+    last_cards TEXT,
+    last_narrative TEXT,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -35,5 +38,10 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+// Migrate existing profiles table — add any columns that were added after initial creation
+for (const col of ['refine_data TEXT', 'last_cards TEXT', 'last_narrative TEXT']) {
+  try { db.exec(`ALTER TABLE profiles ADD COLUMN ${col}`); } catch {}
+}
 
 export default db;

@@ -26,7 +26,7 @@ export default function Nav({ currentPage, onNavigate, user, onSignIn, onSignOut
           className={`nav-pill${currentPage === 'home' ? ' active' : ''}`}
           onClick={() => onNavigate('home')}
         >
-          Suggestions
+          My Dashboard
         </button>
         <button
           className={`nav-pill${currentPage === 'forecast' ? ' active' : ''}`}

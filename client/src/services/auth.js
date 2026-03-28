@@ -1,9 +1,13 @@
 const BASE = '/api/auth';
 
 async function authFetch(path, options = {}) {
+  const { headers: extraHeaders, ...rest } = options;
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) },
-    ...options,
+    ...rest,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(extraHeaders ?? {}),
+    },
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Request failed');

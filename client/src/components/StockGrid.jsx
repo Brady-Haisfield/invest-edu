@@ -319,20 +319,25 @@ function RedFlagsPanel({ inputs }) {
   );
 }
 
-export default function StockGrid({ cards, inputs, advisorNarrative, treasuryRates, user, token, onSignInClick }) {
-  const [savingPlan, setSavingPlan] = useState(false);
-  const [planSaved, setPlanSaved]   = useState(false);
+export default function StockGrid({ cards, inputs, advisorNarrative, treasuryRates, user, token, onSignInClick, planIsSaved, onSavePlanSuccess }) {
+  const [savingPlan, setSavingPlan]     = useState(false);
+  const [planSaveError, setPlanSaveError] = useState(false);
 
   async function handleSavePlan() {
-    if (!token) return;
+    if (!token || planIsSaved) return;
     setSavingPlan(true);
+    setPlanSaveError(false);
     try {
       const planName = `Plan — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+      console.log('[SavePlan] token:', token ? token.slice(0, 20) + '…' : 'null');
+      console.log('[SavePlan] body:', { planName, inputsKeys: Object.keys(inputs ?? {}), cardCount: cards?.length });
       await savePlan(token, { planName, inputs, cards, advisorNarrative: advisorNarrative ?? null });
-      setPlanSaved(true);
-      setTimeout(() => setPlanSaved(false), 2000);
-    } catch {
-      // non-critical
+      console.log('[SavePlan] success');
+      onSavePlanSuccess?.();
+    } catch (err) {
+      console.error('[SavePlan] error:', err.message);
+      setPlanSaveError(true);
+      setTimeout(() => setPlanSaveError(false), 3000);
     } finally {
       setSavingPlan(false);
     }
@@ -455,19 +460,19 @@ export default function StockGrid({ cards, inputs, advisorNarrative, treasuryRat
             <button
               type="button"
               onClick={handleSavePlan}
-              disabled={savingPlan || planSaved}
+              disabled={savingPlan || planIsSaved}
               style={{
                 padding: '8px 16px',
-                background: 'none',
-                border: `1px solid ${planSaved ? 'var(--accent-green)' : 'var(--border-2)'}`,
+                background: planIsSaved ? 'var(--accent-green-dim)' : 'none',
+                border: `1px solid ${planIsSaved ? 'var(--accent-green)' : planSaveError ? 'var(--accent-red)' : 'var(--border-2)'}`,
                 borderRadius: 'var(--radius)',
-                color: planSaved ? 'var(--accent-green-bright)' : 'var(--text-secondary)',
-                fontSize: 11, cursor: savingPlan || planSaved ? 'default' : 'pointer',
+                color: planIsSaved ? 'var(--accent-green-bright)' : planSaveError ? 'var(--accent-red)' : 'var(--text-secondary)',
+                fontSize: 11, cursor: savingPlan || planIsSaved ? 'default' : 'pointer',
                 fontFamily: "'DM Mono', monospace",
-                transition: 'border-color 0.2s, color 0.2s',
+                transition: 'border-color 0.2s, color 0.2s, background 0.2s',
               }}
             >
-              {planSaved ? 'Plan saved!' : savingPlan ? 'Saving...' : 'Save This Plan'}
+              {planIsSaved ? 'Saved ✓' : planSaveError ? 'Could not save — try again' : savingPlan ? 'Saving...' : 'Save This Plan'}
             </button>
           ) : (
             <button

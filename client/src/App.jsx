@@ -83,6 +83,7 @@ export default function App() {
   const [lastInputs, setLastInputs] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [planIsSaved, setPlanIsSaved] = useState(false);
 
   // Forecast page state
   const [forecast, setForecast] = useState(null);
@@ -96,14 +97,18 @@ export default function App() {
   const [forecastSectorPE, setForecastSectorPE] = useState(null);
 
   // Refs to track latest values in async callbacks
-  const tokenRef        = useRef(token);
-  const profileRef      = useRef(profileInputs);
-  const refineRef       = useRef(refineInputs);
+  const tokenRef         = useRef(token);
+  const profileRef       = useRef(profileInputs);
+  const refineRef        = useRef(refineInputs);
+  const cardsRef         = useRef(cards);
+  const narrativeRef     = useRef(advisorNarrative);
   const refineChangedRef = useRef(false);
 
-  useEffect(() => { tokenRef.current = token; },           [token]);
-  useEffect(() => { profileRef.current = profileInputs; }, [profileInputs]);
-  useEffect(() => { refineRef.current = refineInputs; },   [refineInputs]);
+  useEffect(() => { tokenRef.current = token; },              [token]);
+  useEffect(() => { profileRef.current = profileInputs; },    [profileInputs]);
+  useEffect(() => { refineRef.current = refineInputs; },      [refineInputs]);
+  useEffect(() => { cardsRef.current = cards; },              [cards]);
+  useEffect(() => { narrativeRef.current = advisorNarrative; }, [advisorNarrative]);
 
   // Auto-fetch on initial load when profile exists but no cards were cached in DB
   useEffect(() => {
@@ -133,6 +138,12 @@ export default function App() {
       setUser(JSON.parse(savedUser));
       getMe(savedToken)
         .then((meData) => {
+          console.log('[mount] getMe response:', JSON.stringify({
+            hasProfile: !!meData.savedProfile,
+            hasInputs: !!meData.savedProfile?.inputs,
+            hasCards: !!meData.savedProfile?.lastCards,
+            cardCount: meData.savedProfile?.lastCards?.length ?? 0,
+          }));
           if (meData.savedProfile) {
             const { inputs, refineInputs: savedRefine, lastCards, lastAdvisorNarrative } = meData.savedProfile;
             setProfileInputs(inputs);
@@ -142,10 +153,17 @@ export default function App() {
               setCards(lastCards);
               setLastInputs(buildMergedInputs(inputs, savedRefine));
               setAdvisorNarrative(lastAdvisorNarrative ?? null);
+              setPlanIsSaved(true);
+              console.log('[mount] restored', lastCards.length, 'cards from DB ✓');
+            } else {
+              console.log('[mount] profile found but no cached cards — will auto-fetch');
             }
+          } else {
+            console.log('[mount] no saved profile — showing onboarding');
           }
         })
-        .catch(() => {
+        .catch((err) => {
+          console.error('[mount] getMe failed:', err.message);
           localStorage.removeItem('meridian_token');
           localStorage.removeItem('meridian_user');
           setToken(null);
@@ -175,8 +193,8 @@ export default function App() {
         saveProfile(tok, {
           inputs: prof,
           refineInputs: refineRef.current,
-          lastCards: null,
-          lastAdvisorNarrative: null,
+          lastCards: cardsRef.current ?? null,
+          lastAdvisorNarrative: narrativeRef.current ?? null,
         }).catch(() => {});
       }
     }, 500);
@@ -223,6 +241,7 @@ export default function App() {
           setCards(lastCards);
           setLastInputs(buildMergedInputs(inputs, savedRefine));
           setAdvisorNarrative(lastAdvisorNarrative ?? null);
+          setPlanIsSaved(true);
         } else {
           // No cached results — fetch fresh
           const merged = buildMergedInputs(inputs, savedRefine);
@@ -267,6 +286,7 @@ export default function App() {
 
   // Core submit — returns { cards, advisorNarrative } or null on error
   async function handleSubmitCore(formData) {
+    setPlanIsSaved(false);
     setLoading(true);
     setError(null);
     setCards(null);
@@ -294,13 +314,18 @@ export default function App() {
     refineChangedRef.current = false;
     const result = await handleSubmitCore(formData);
     const tok = tokenRef.current;
+    console.log('[handleFirstSetup] result:', !!result, '| token:', tok ? tok.slice(0, 20) + '…' : 'null');
     if (result && tok) {
       saveProfile(tok, {
         inputs: formData,
         refineInputs: INITIAL_REFINE,
         lastCards: result.cards,
         lastAdvisorNarrative: result.advisorNarrative ?? null,
-      }).catch(() => {});
+      })
+        .then(() => console.log('[handleFirstSetup] profile saved to DB ✓'))
+        .catch((err) => console.error('[handleFirstSetup] profile save failed:', err.message));
+    } else {
+      console.warn('[handleFirstSetup] skipping save — result:', !!result, 'token:', !!tok);
     }
   }
 
@@ -509,6 +534,8 @@ export default function App() {
                   user={user}
                   token={token}
                   onSignInClick={() => setShowAuthModal(true)}
+                  planIsSaved={planIsSaved}
+                  onSavePlanSuccess={() => setPlanIsSaved(true)}
                 />
               )}
               {!loading && !error && !cards && (

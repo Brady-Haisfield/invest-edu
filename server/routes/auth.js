@@ -84,16 +84,33 @@ router.get('/me', requireAuth, (req, res, next) => {
     const user = db.prepare('SELECT id, email, created_at FROM users WHERE id = ?').get(req.userId);
     if (!user) return res.status(401).json({ error: 'User not found' });
 
-    const profile = db.prepare('SELECT profile_data FROM profiles WHERE user_id = ?').get(req.userId);
+    const profile = db.prepare(
+      'SELECT profile_data, refine_data, last_cards, last_narrative FROM profiles WHERE user_id = ?'
+    ).get(req.userId);
+
     let savedProfile = null;
     if (profile) {
-      const parsed = JSON.parse(profile.profile_data);
-      // Handle new format { inputs, refineInputs, lastCards, lastAdvisorNarrative }
-      // and legacy format (raw inputs object stored directly)
-      if (parsed && typeof parsed === 'object' && parsed.inputs) {
-        savedProfile = parsed;
-      } else {
-        savedProfile = { inputs: parsed, refineInputs: null, lastCards: null, lastAdvisorNarrative: null };
+      // New 4-column format: profile_data holds only core inputs
+      if (profile.profile_data) {
+        let inputs = null;
+        try { inputs = JSON.parse(profile.profile_data); } catch {}
+
+        // Handle legacy: old profile_data stored the entire blob { inputs, refineInputs, ... }
+        if (inputs && inputs.inputs) {
+          savedProfile = {
+            inputs:              inputs.inputs,
+            refineInputs:        inputs.refineInputs ?? null,
+            lastCards:           inputs.lastCards ?? null,
+            lastAdvisorNarrative: inputs.lastAdvisorNarrative ?? null,
+          };
+        } else {
+          savedProfile = {
+            inputs,
+            refineInputs:        profile.refine_data   ? JSON.parse(profile.refine_data)   : null,
+            lastCards:           profile.last_cards     ? JSON.parse(profile.last_cards)     : null,
+            lastAdvisorNarrative: profile.last_narrative ?? null,
+          };
+        }
       }
     }
 
@@ -112,20 +129,22 @@ router.post('/profile', requireAuth, (req, res, next) => {
       return res.status(400).json({ error: 'inputs must be an object' });
     }
 
-    const profileData = {
-      inputs,
-      refineInputs:        refineInputs ?? null,
-      lastCards:           lastCards ?? null,
-      lastAdvisorNarrative: lastAdvisorNarrative ?? null,
-    };
-
     db.prepare(`
-      INSERT INTO profiles (user_id, profile_data, updated_at)
-      VALUES (?, ?, CURRENT_TIMESTAMP)
+      INSERT INTO profiles (user_id, profile_data, refine_data, last_cards, last_narrative, updated_at)
+      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT (user_id) DO UPDATE SET
-        profile_data = excluded.profile_data,
-        updated_at   = CURRENT_TIMESTAMP
-    `).run(req.userId, JSON.stringify(profileData));
+        profile_data   = excluded.profile_data,
+        refine_data    = excluded.refine_data,
+        last_cards     = excluded.last_cards,
+        last_narrative = excluded.last_narrative,
+        updated_at     = CURRENT_TIMESTAMP
+    `).run(
+      req.userId,
+      JSON.stringify(inputs),
+      refineInputs ? JSON.stringify(refineInputs) : null,
+      lastCards    ? JSON.stringify(lastCards)    : null,
+      lastAdvisorNarrative ?? null,
+    );
 
     res.json({ success: true });
   } catch (err) {
@@ -138,6 +157,7 @@ router.post('/profile', requireAuth, (req, res, next) => {
 router.post('/save-plan', requireAuth, (req, res, next) => {
   try {
     const { planName, inputs, cards, advisorNarrative } = req.body;
+    console.log('[save-plan] userId:', req.userId, '| planName:', planName, '| has inputs:', !!inputs, '| card count:', Array.isArray(cards) ? cards.length : 'not array');
     if (!planName || typeof planName !== 'string') {
       return res.status(400).json({ error: 'planName is required' });
     }
