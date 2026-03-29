@@ -258,9 +258,19 @@ export default function AllocationBuilder({ cards, inputs, treasuryRates }) {
           const spyYield     = treasuryRates?.sp500DivYield    ?? 0.013;
           const spyPct       = (spyRate * 100).toFixed(1);
           const spyYieldPct  = (spyYield * 100).toFixed(1);
-          console.log('[StockGrid] treasuryRates:', treasuryRates);
           const spyProjected = Math.round(total * Math.pow(1 + spyRate, holdYears));
           const spyIncome    = Math.round(total * spyYield);
+
+          // Weighted average return and yield across all allocated cards
+          const validRows     = rows.filter(r => r.amt > 0 && r.result?.baseRate != null);
+          const allocTotal    = validRows.reduce((s, r) => s + r.amt, 0);
+          const avgReturnPct  = allocTotal > 0
+            ? (validRows.reduce((s, r) => s + r.result.baseRate * r.amt, 0) / allocTotal * 100).toFixed(1)
+            : null;
+          const yieldRows     = validRows.filter(r => r.dividendYield != null);
+          const avgYieldPct   = allocTotal > 0 && yieldRows.length > 0
+            ? (yieldRows.reduce((s, r) => s + (r.dividendYield / 100) * r.amt, 0) / allocTotal * 100).toFixed(1)
+            : '0.0';
           const diff         = totalProjected - spyProjected;
           const diffPct      = Math.abs(diff / spyProjected) * 100;
           let insight;
@@ -281,7 +291,9 @@ export default function AllocationBuilder({ cards, inputs, treasuryRates }) {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginBottom: 'var(--space-3)' }}>
                 <div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace", marginBottom: 4 }}>Your allocation</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace", marginBottom: 4 }}>
+                    Your allocation{avgReturnPct ? ` (~${avgReturnPct}%/yr · ~${avgYieldPct}% yield)` : ''}
+                  </div>
                   <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'DM Mono', monospace", color: 'var(--accent-green-bright)' }}>~{fmt(totalProjected)}</div>
                   <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace", marginTop: 2 }}>~{fmt(totalIncome)}/yr income</div>
                 </div>

@@ -1,5 +1,29 @@
 import { useState } from 'react';
 
+// Expense ratios in % (e.g. 0.03 = 0.03%). Last verified: March 2026 — update annually.
+const ETF_EXPENSE_RATIOS = {
+  'VTI': 0.03,  'VOO': 0.03,  'SPY': 0.0945, 'QQQ': 0.20,
+  'SCHD': 0.06, 'VYM': 0.06,  'BND': 0.03,   'AGG': 0.03,
+  'TLT': 0.15,  'VNQ': 0.13,  'AVUV': 0.25,  'VWO': 0.08,
+  'SCHB': 0.03, 'IVV': 0.03,  'IEMG': 0.09,  'XLE': 0.09,
+  'XLK': 0.09,  'XLV': 0.09,  'JEPI': 0.35,  'JEPQ': 0.35,
+  'SCHY': 0.14, 'ITOT': 0.03, 'SCHX': 0.03,  'IWM': 0.19,
+  'GLD': 0.40,  'IAU': 0.25,  'PDBC': 0.59,  'VCSH': 0.04,
+  'VGSH': 0.04, 'HYG': 0.48,  'JNK': 0.40,   'LQD': 0.14,
+  'VCIT': 0.04,
+};
+
+// Dividend/distribution yields in % (e.g. 1.31 = 1.31%). Last verified: March 2026 — update annually.
+const ETF_KNOWN_YIELDS = {
+  'VTI': 1.31,  'VOO': 1.31,  'SPY': 1.27,  'QQQ': 0.58,
+  'SCHD': 3.51, 'VYM': 2.82,  'BND': 4.53,  'AGG': 3.81,
+  'TLT': 4.62,  'VNQ': 4.12,  'AVUV': 1.41, 'VWO': 2.94,
+  'SCHB': 1.28, 'IVV': 1.31,  'IEMG': 2.31, 'XLE': 3.21,
+  'XLK': 0.71,  'XLV': 1.52,  'JEPI': 7.12, 'JEPQ': 9.21,
+  'SCHY': 4.21, 'IWM': 1.41,  'GLD': 0,     'HYG': 7.21,
+  'JNK': 7.34,  'LQD': 5.02,  'VCSH': 4.61,
+};
+
 function formatMarketCap(n) {
   if (n == null) return 'N/A';
   if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
@@ -87,6 +111,7 @@ function LevelChip({ label, level }) {
 export default function StockCard({ card, equalProjection }) {
   const { ticker, name, price, fiftyTwoWeekLow, fiftyTwoWeekHigh, peRatio, marketCap, sector, reasoning, type, portfolioRole, retirementLens, watchOut, expenseRatio } = card;
   const [lensOpen, setLensOpen] = useState(false);
+  const [hoveredStat, setHoveredStat] = useState(null);
 
   const typeConf = TYPE_CONFIG[type] || TYPE_CONFIG.stock;
 
@@ -145,19 +170,79 @@ export default function StockCard({ card, equalProjection }) {
         borderBottom: '1px solid var(--border)',
         padding: 'var(--space-3) 0',
       }}>
-        {(type === 'etf' || type === 'bond_etf') && expenseRatio != null ? (
-          <>
-            <div style={{ flex: 1, textAlign: 'center' }}>
-              <div className="section-label" style={{ marginBottom: 3 }}>Exp. Ratio</div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{(expenseRatio * 100).toFixed(2)}%</div>
-            </div>
-            <div style={{ width: 1, background: 'var(--border)' }} />
-            <div style={{ flex: 1, textAlign: 'center' }}>
-              <div className="section-label" style={{ marginBottom: 3 }}>Mkt Cap</div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{formatMarketCap(marketCap)}</div>
-            </div>
-          </>
-        ) : (
+        {(type === 'etf' || type === 'bond_etf') ? (() => {
+          // Expense ratio: lookup table (already in %) → FMP decimal (×100) → N/A
+          const knownRatio = ETF_EXPENSE_RATIOS[ticker];
+          const displayRatio = knownRatio != null
+            ? `${knownRatio.toFixed(2)}%`
+            : expenseRatio != null
+              ? `${(expenseRatio * 100).toFixed(2)}%`
+              : 'N/A';
+
+          const yieldLabel  = type === 'bond_etf' ? 'DIST. YIELD' : 'DIV. YIELD';
+          const knownYield  = ETF_KNOWN_YIELDS[ticker];
+          const displayYield = knownYield != null
+            ? `${knownYield.toFixed(2)}%`
+            : card.dividendYield != null
+              ? `${Number(card.dividendYield).toFixed(2)}%`
+              : 'N/A';
+
+          return (
+            <>
+              {/* Expense ratio stat */}
+              <div
+                style={{ flex: 1, textAlign: 'center', position: 'relative', cursor: 'default' }}
+                onMouseEnter={() => setHoveredStat('expense')}
+                onMouseLeave={() => setHoveredStat(null)}
+              >
+                <div className="section-label" style={{ marginBottom: 3 }}>EXP. RATIO</div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{displayRatio}</div>
+                {hoveredStat === 'expense' && (
+                  <div style={{
+                    position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%',
+                    transform: 'translateX(-50%)', zIndex: 50,
+                    background: 'var(--bg-card)', border: '1px solid var(--border-2)',
+                    borderRadius: 'var(--radius)', padding: 'var(--space-3)',
+                    width: 220, lineHeight: 1.5,
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                    pointerEvents: 'none', textAlign: 'left',
+                  }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                      Annual fee charged by the fund. Lower is better — this reduces your return each year.
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ width: 1, background: 'var(--border)' }} />
+
+              {/* Yield stat */}
+              <div
+                style={{ flex: 1, textAlign: 'center', position: 'relative', cursor: 'default' }}
+                onMouseEnter={() => setHoveredStat('yield')}
+                onMouseLeave={() => setHoveredStat(null)}
+              >
+                <div className="section-label" style={{ marginBottom: 3 }}>{yieldLabel}</div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{displayYield}</div>
+                {hoveredStat === 'yield' && (
+                  <div style={{
+                    position: 'absolute', bottom: 'calc(100% + 6px)', right: 0,
+                    zIndex: 50,
+                    background: 'var(--bg-card)', border: '1px solid var(--border-2)',
+                    borderRadius: 'var(--radius)', padding: 'var(--space-3)',
+                    width: 220, lineHeight: 1.5,
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                    pointerEvents: 'none', textAlign: 'left',
+                  }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                      Income paid out to investors, shown as % of current price. For ETFs this includes dividends from all holdings.
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          );
+        })() : (
           <>
             <div style={{ flex: 1, textAlign: 'center' }}>
               <div className="section-label" style={{ marginBottom: 3 }}>P/E</div>
