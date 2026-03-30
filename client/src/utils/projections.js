@@ -24,19 +24,26 @@ export function calcProjection(card, totalYears, isConservative, treasuryRates) 
   console.log('[projections] ticker:', card.ticker, '| dividendYield:', card.dividendYield, '| epsGrowthFwd:', card.epsGrowthFwd ?? 'n/a');
   switch (card.type) {
     case 'bond_etf': return calcBondETFProjection(card, totalYears, isConservative, treasuryRates);
-    case 'reit':     return calcREITProjection(card, totalYears, isConservative);
+    case 'reit':     return calcREITProjection(card, totalYears, isConservative, treasuryRates);
     case 'etf':      return calcETFProjection(card, totalYears, isConservative, treasuryRates);
     case 'stock':
     default:         return calcStockProjection(card, totalYears, isConservative);
   }
 }
 
-// ─── STOCKS: Bogle's model + CAPM blend ───────────────────────────────────────
+// ─── STOCKS: 4-source dynamic model ───────────────────────────────────────────
 
 function calcStockProjection(card, years, isConservative) {
-  const divYield = normalizeDivYield(card.dividendYield) ?? 0.018;
+  // SOURCE 1: Analyst price target implied return (most forward-looking)
+  let analystImpliedReturn = null;
+  if (isValid(card.priceTargetConsensus) && isValid(card.price) && card.price > 0) {
+    const impliedOneYear = (card.priceTargetConsensus - card.price) / card.price;
+    // Analyst targets are 12-month; assume mean reversion at 60% for multi-year hold
+    analystImpliedReturn = impliedOneYear * 0.6;
+  }
 
-  // Earnings growth priority: FMP forward estimate → Finnhub EPS → Finnhub revenue → fallback
+  // SOURCE 2: Bogle model (dividend yield + forward EPS growth)
+  const divYield = normalizeDivYield(card.dividendYield) ?? 0.018;
   let earningsGrowth;
   let growthSource;
   if (isValid(card.epsGrowthFwd)) {
@@ -52,45 +59,68 @@ function calcStockProjection(card, years, isConservative) {
     earningsGrowth = 0.065;
     growthSource = 'industry';
   }
-
   earningsGrowth = Math.min(0.25, Math.max(-0.15, earningsGrowth));
-
   const bogleReturn = divYield + earningsGrowth;
 
-  // Beta priority: Finnhub → Alpha Vantage (already merged into card.beta by server)
+  // SOURCE 3: CAPM
   const riskFree = 0.043;
   const capmReturn = (isValid(card.beta) && card.beta > 0 && card.beta < 3)
     ? riskFree + card.beta * MARKET_PREMIUM
     : MARKET_LONG_RUN;
 
-  let rate = (bogleReturn * 0.5) + (capmReturn * 0.5);
-  rate = Math.min(0.20, Math.max(0.01, rate));
-  if (isConservative) rate *= 0.80;
+  // SOURCE 4: News sentiment nudge (−1.5% to +1.5%)
+  const sentimentAdj = isValid(card.newsSentimentScore)
+    ? card.newsSentimentScore * 0.015
+    : 0;
 
-  // dataSource describes what data was actually available
-  const hasGrowthData = growthSource !== 'industry';
-  const hasBeta = isValid(card.beta);
+  // Blend — analyst targets carry most weight when available
+  let blendedRate;
+  if (analystImpliedReturn != null) {
+    blendedRate = (analystImpliedReturn * 0.40) +
+                  (bogleReturn          * 0.35) +
+                  (capmReturn           * 0.25) +
+                  sentimentAdj;
+  } else {
+    blendedRate = (bogleReturn * 0.50) +
+                  (capmReturn  * 0.50) +
+                  sentimentAdj;
+  }
 
-  let dataSource;
-  if (growthSource === 'analyst' && hasBeta) dataSource = 'analyst estimates + market data';
-  else if (hasGrowthData && hasBeta)        dataSource = 'historical financials + market data';
-  else if (hasGrowthData || hasBeta)        dataSource = 'partial market data';
-  else                                       dataSource = 'industry averages';
+  // Floor at 0% — time diversifies short-term losses on a long hold
+  blendedRate = Math.max(0, blendedRate);
+  if (isConservative) blendedRate *= 0.80;
 
-  const methodNote = growthSource === 'analyst'
-    ? 'analyst consensus EPS forecast'
-    : growthSource === 'historical'
-      ? '3-year historical EPS/revenue growth'
-      : 'industry-average growth rate';
+  // Scenarios: use actual analyst high/low if available, else ±35% of base
+  let pessimisticRate, optimisticRate;
+  if (isValid(card.priceTargetLow) && isValid(card.priceTargetHigh) && isValid(card.price) && card.price > 0) {
+    pessimisticRate = Math.max(0, ((card.priceTargetLow  - card.price) / card.price) * 0.6);
+    optimisticRate  =              ((card.priceTargetHigh - card.price) / card.price) * 0.6;
+    if (isConservative) {
+      pessimisticRate *= 0.80;
+      optimisticRate  *= 0.80;
+    }
+  } else {
+    pessimisticRate = Math.max(0, blendedRate * 0.65);
+    optimisticRate  = blendedRate * 1.35;
+  }
 
-  return buildResult(card, rate, divYield, years, dataSource,
-    `Bogle model (dividend yield + ${methodNote}) blended with CAPM`);
+  // Build data source label
+  const sources = [];
+  if (analystImpliedReturn != null)  sources.push('analyst price targets');
+  if (growthSource === 'analyst')    sources.push('forward EPS estimates');
+  else if (growthSource === 'historical') sources.push('historical earnings');
+  if (isValid(card.newsSentimentScore)) sources.push('news sentiment');
+  sources.push('CAPM');
+  const dataSource = sources.join(' + ');
+
+  return buildResult(card, blendedRate, divYield, years, dataSource,
+    'Weighted blend of Wall St. analyst price targets (40%), Bogle fundamental model (35%), and CAPM (25%), adjusted for news sentiment',
+    null, pessimisticRate, optimisticRate);
 }
 
-// ─── ETFs: CAPM primary, Shiller CAPE for SPY/broad market ───────────────────
+// ─── ETFs: CAPM + optional holdings-weighted analyst targets + news sentiment ─
 
 function calcETFProjection(card, years, isConservative, treasuryRates) {
-  // FMP dividend yield (already merged into card.dividendYield by server) or known yields table
   const divYield = BOND_ETF_KNOWN_YIELDS[card.ticker]
     ?? normalizeDivYield(card.dividendYield)
     ?? 0.025;
@@ -100,31 +130,56 @@ function calcETFProjection(card, years, isConservative, treasuryRates) {
   if (isValid(card.beta) && card.beta > 0 && card.beta < 3) {
     capmReturn = riskFree + card.beta * MARKET_PREMIUM;
   } else if (treasuryRates?.spyForwardReturn) {
-    // Use Shiller CAPE-derived forward return for broad market ETFs
     capmReturn = treasuryRates.spyForwardReturn;
   } else {
     capmReturn = MARKET_LONG_RUN;
   }
 
-  const boglePartial = divYield;
-  let rate = (boglePartial * 0.3) + (capmReturn * 0.7);
+  const baseRate = (divYield * 0.3) + (capmReturn * 0.7);
+
+  // Blend in holdings-weighted analyst implied return at 30% when available
+  let rate;
+  const hasHoldings = isValid(card.etfHoldingsReturn);
+  if (hasHoldings) {
+    rate = (card.etfHoldingsReturn * 0.30) + (baseRate * 0.70);
+  } else {
+    rate = baseRate;
+  }
+
+  // News sentiment nudge ±1.5%
+  const sentimentAdj = isValid(card.newsSentimentScore) ? card.newsSentimentScore * 0.015 : 0;
+  rate = rate + sentimentAdj;
+
   rate = Math.min(0.18, Math.max(0.01, rate));
   if (isConservative) rate *= 0.82;
 
   const hasRealData = isValid(card.beta) && isValid(card.dividendYield);
-  const usedCape = !isValid(card.beta) && !!treasuryRates?.spyForwardReturn;
-  const dataSource = hasRealData ? 'market data'
-    : usedCape ? 'Shiller CAPE market estimate'
-    : 'industry average';
+  const usedCape    = !isValid(card.beta) && !!treasuryRates?.spyForwardReturn;
+  const hasSentiment = isValid(card.newsSentimentScore);
 
-  const methodNote = usedCape
-    ? 'Shiller CAPE earnings yield + inflation expectations'
-    : 'CAPM risk-adjusted market return using actual beta';
+  let dataSource;
+  if (hasHoldings) {
+    dataSource = 'holdings-weighted analyst targets + CAPM' + (hasSentiment ? ' + news sentiment' : '');
+  } else if (hasSentiment) {
+    dataSource = 'CAPM market model + news sentiment';
+  } else if (hasRealData) {
+    dataSource = 'market data';
+  } else if (usedCape) {
+    dataSource = 'Shiller CAPE market estimate';
+  } else {
+    dataSource = 'industry average';
+  }
+
+  const methodNote = hasHoldings
+    ? 'Holdings-weighted analyst price targets (30%) blended with CAPM (70%), adjusted for news sentiment'
+    : usedCape
+      ? 'Shiller CAPE earnings yield + inflation expectations'
+      : 'CAPM risk-adjusted market return using actual beta';
 
   return buildResult(card, rate, divYield, years, dataSource, methodNote);
 }
 
-// ─── BOND ETFs: Treasury yield matched to hold period ─────────────────────────
+// ─── BOND ETFs: Treasury yield + duration adjustment + news sentiment ─────────
 
 function calcBondETFProjection(card, years, isConservative, treasuryRates) {
   let benchmarkRate;
@@ -143,12 +198,32 @@ function calcBondETFProjection(card, years, isConservative, treasuryRates) {
 
   if (isConservative) rate *= 0.90;
 
+  // Duration-based interest rate sensitivity adjustment.
+  // If duration > 7 years, long-duration bonds are sensitive to rate moves.
+  // Rate change estimate = amount inflation expectations exceed the 2% Fed target.
+  // Formula: annual drag = -(duration × rateChangeEstimate) / years  (one-time price impact annualised)
+  let durationDrag = 0;
+  let durationNote = null;
+  const dur = card.averageDuration ?? null;
+  if (dur != null && dur > 7 && treasuryRates?.inflationExpect) {
+    const rateChangeEstimate = Math.max(0, treasuryRates.inflationExpect - 0.02);
+    if (rateChangeEstimate > 0) {
+      durationDrag = -(dur * rateChangeEstimate) / years;
+      durationNote = `Duration ${dur.toFixed(1)} yrs — rate sensitivity applied`;
+    }
+  }
+
+  // News sentiment nudge ±1.5%
+  const sentimentAdj = isValid(card.newsSentimentScore) ? card.newsSentimentScore * 0.015 : 0;
+
+  rate = Math.max(0.005, rate + durationDrag + sentimentAdj);
+
   const pessimisticRate = Math.max(0.005, rate - 0.015);
   const optimisticRate  = rate + 0.010;
 
-  const incomeYield = actualYield ?? rate;
-  const dataSource  = knownYield ? 'known SEC yield' : actualYield ? 'market data' : 'Treasury benchmark';
+  const incomeYield   = actualYield ?? rate;
   const maturityLabel = years <= 2 ? '2' : years <= 5 ? '5' : '10';
+  const dataSource    = 'live Treasury yields + duration adjustment';
 
   return {
     baseRate:         rate,
@@ -159,47 +234,89 @@ function calcBondETFProjection(card, years, isConservative, treasuryRates) {
     optimisticValue:  Math.round(card._allocatedAmount * Math.pow(1 + optimisticRate, years)),
     annualIncome:     Math.round(card._allocatedAmount * incomeYield),
     dataSource,
-    methodology: `Live ${maturityLabel}-year Treasury yield from US Federal Reserve`,
-    assetNote: 'Bond return based on current Treasury yield. Rising rates reduce bond prices.',
+    methodology: `Live ${maturityLabel}-year Treasury yield from US Federal Reserve${durationDrag < 0 ? ', duration-adjusted for rate sensitivity' : ''}`,
+    assetNote: durationNote ?? 'Bond return based on current Treasury yield. Rising rates reduce bond prices.',
   };
 }
 
-// ─── REITs: Dividend yield + FFO growth ───────────────────────────────────────
+// ─── REITs: analyst targets + dividend yield + FFO growth + yield spread ──────
 
-function calcREITProjection(card, years, isConservative) {
+function calcREITProjection(card, years, isConservative, treasuryRates) {
   const divYield = normalizeDivYield(card.dividendYield) ?? 0.048;
 
+  // FFO growth proxy
   let ffoGrowth;
   if (isValid(card.revenueGrowth3Y))      ffoGrowth = card.revenueGrowth3Y;
   else if (isValid(card.revenueGrowth5Y)) ffoGrowth = card.revenueGrowth5Y;
   else ffoGrowth = 0.03;
-
   ffoGrowth = Math.min(0.15, Math.max(-0.10, ffoGrowth));
 
   const reitBogle = (divYield * 0.70) + (ffoGrowth * 0.30);
 
-  const riskFree = 0.043;
+  const riskFree   = 0.043;
   const capmReturn = (isValid(card.beta) && card.beta > 0 && card.beta < 3)
     ? riskFree + card.beta * MARKET_PREMIUM
     : 0.085;
 
-  let rate = (reitBogle * 0.60) + (capmReturn * 0.40);
-  rate = Math.min(0.18, Math.max(0.01, rate));
-  if (isConservative) rate *= 0.85;
+  // Enhancement 1 — analyst price target implied return
+  let analystImpliedReturn = null;
+  if (isValid(card.priceTargetConsensus) && isValid(card.price) && card.price > 0) {
+    analystImpliedReturn = ((card.priceTargetConsensus - card.price) / card.price) * 0.6;
+  }
 
-  const dataSource = isValid(card.dividendYield) && (isValid(card.revenueGrowth3Y) || isValid(card.revenueGrowth5Y))
-    ? 'market data' : 'industry average';
+  let blendedRate;
+  if (analystImpliedReturn != null) {
+    blendedRate = (analystImpliedReturn * 0.35) +
+                  (reitBogle           * 0.40) +
+                  (capmReturn          * 0.25);
+  } else {
+    blendedRate = (reitBogle * 0.60) + (capmReturn * 0.40);
+  }
 
-  return buildResult(card, rate, divYield, years, dataSource,
-    'REIT model: dividend yield (70%) + FFO growth proxy (30%), CAPM-adjusted',
-    'EPS excluded — depreciation distorts REIT earnings. Revenue growth used as FFO proxy.');
+  // News sentiment nudge ±1.5%
+  blendedRate += isValid(card.newsSentimentScore) ? card.newsSentimentScore * 0.015 : 0;
+
+  // Enhancement 2 — yield spread vs live 10-year Treasury
+  const tenYearRate  = treasuryRates?.tenYear ?? 0.045;
+  const yieldSpread  = divYield - tenYearRate;
+  let spreadAdj      = 0;
+  if      (yieldSpread >  0.02) spreadAdj =  0.005; // REIT yield well above Treasuries — attractive
+  else if (yieldSpread <  0)    spreadAdj = -0.010; // Treasury yield > REIT yield — expensive vs risk-free
+
+  blendedRate = Math.min(0.18, Math.max(0.01, blendedRate + spreadAdj));
+  if (isConservative) blendedRate *= 0.85;
+
+  // Data source label
+  const hasRealData    = isValid(card.dividendYield) && (isValid(card.revenueGrowth3Y) || isValid(card.revenueGrowth5Y));
+  const hasAnalyst     = analystImpliedReturn != null;
+  const hasSentiment   = isValid(card.newsSentimentScore);
+
+  const sourceParts = [];
+  if (hasAnalyst)   sourceParts.push('analyst price targets');
+  if (hasRealData)  sourceParts.push('dividend yield + FFO growth proxy');
+  else              sourceParts.push('industry average');
+  sourceParts.push('REIT yield spread vs live Treasury rate');
+  if (hasSentiment) sourceParts.push('news sentiment');
+  const dataSource = sourceParts.join(' + ');
+
+  const spreadNote = yieldSpread > 0.02
+    ? `Yield spread +${(yieldSpread * 100).toFixed(1)}% above 10-yr Treasury — REIT looks attractive vs bonds`
+    : yieldSpread < 0
+      ? `Yield spread ${(yieldSpread * 100).toFixed(1)}% below 10-yr Treasury — Treasury yields competing with REIT income`
+      : null;
+
+  return buildResult(card, blendedRate, divYield, years, dataSource,
+    hasAnalyst
+      ? 'REIT model: analyst targets (35%) + Bogle dividend+FFO (40%) + CAPM (25%), yield spread vs Treasury applied'
+      : 'REIT model: dividend yield (70%) + FFO growth proxy (30%), CAPM-adjusted, yield spread vs Treasury applied',
+    spreadNote ?? 'EPS excluded — depreciation distorts REIT earnings. Revenue growth used as FFO proxy.');
 }
 
 // ─── Shared helpers ────────────────────────────────────────────────────────────
 
-function buildResult(card, rate, divYield, years, dataSource, methodology, assetNote = null) {
-  const pessimisticRate = rate * 0.60;
-  const optimisticRate  = rate * 1.40;
+function buildResult(card, rate, divYield, years, dataSource, methodology, assetNote = null, pessimisticOverride = null, optimisticOverride = null) {
+  const pessimisticRate = pessimisticOverride ?? rate * 0.60;
+  const optimisticRate  = optimisticOverride  ?? rate * 1.40;
   return {
     baseRate:         rate,
     pessimisticRate,

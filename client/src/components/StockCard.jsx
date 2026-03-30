@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
-// Expense ratios in % (e.g. 0.03 = 0.03%). Last verified: March 2026 — update annually.
+// Fallback expense ratios in % — used only when FMP live data returns null.
+// Last verified: March 2026 — update annually.
 const ETF_EXPENSE_RATIOS = {
   'VTI': 0.03,  'VOO': 0.03,  'SPY': 0.0945, 'QQQ': 0.20,
   'SCHD': 0.06, 'VYM': 0.06,  'BND': 0.03,   'AGG': 0.03,
@@ -10,10 +11,11 @@ const ETF_EXPENSE_RATIOS = {
   'SCHY': 0.14, 'ITOT': 0.03, 'SCHX': 0.03,  'IWM': 0.19,
   'GLD': 0.40,  'IAU': 0.25,  'PDBC': 0.59,  'VCSH': 0.04,
   'VGSH': 0.04, 'HYG': 0.48,  'JNK': 0.40,   'LQD': 0.14,
-  'VCIT': 0.04,
+  'VCIT': 0.04, 'IGSB': 0.06, 'VCLT': 0.04,
 };
 
-// Dividend/distribution yields in % (e.g. 1.31 = 1.31%). Last verified: March 2026 — update annually.
+// Fallback dividend/distribution yields in % — used only when FMP and Finnhub both return null.
+// Last verified: March 2026 — update annually.
 const ETF_KNOWN_YIELDS = {
   'VTI': 1.31,  'VOO': 1.31,  'SPY': 1.27,  'QQQ': 0.58,
   'SCHD': 3.51, 'VYM': 2.82,  'BND': 4.53,  'AGG': 3.81,
@@ -21,7 +23,7 @@ const ETF_KNOWN_YIELDS = {
   'SCHB': 1.28, 'IVV': 1.31,  'IEMG': 2.31, 'XLE': 3.21,
   'XLK': 0.71,  'XLV': 1.52,  'JEPI': 7.12, 'JEPQ': 9.21,
   'SCHY': 4.21, 'IWM': 1.41,  'GLD': 0,     'HYG': 7.21,
-  'JNK': 7.34,  'LQD': 5.02,  'VCSH': 4.61,
+  'JNK': 7.34,  'LQD': 5.02,  'VCSH': 4.61, 'IGSB': 4.80, 'VCLT': 5.10,
 };
 
 function formatMarketCap(n) {
@@ -108,8 +110,17 @@ function LevelChip({ label, level }) {
   );
 }
 
+const CONSENSUS_STYLE = {
+  'Strong Buy':  { color: 'var(--accent-green-bright)', bg: 'var(--accent-green-dim)', border: 'var(--accent-green)' },
+  'Buy':         { color: '#6ee7b7',                    bg: 'rgba(52,211,153,0.08)',   border: 'rgba(52,211,153,0.3)' },
+  'Hold':        { color: 'var(--accent-amber)',         bg: '#2a1f0a',                 border: 'var(--accent-amber)' },
+  'Sell':        { color: 'var(--accent-red)',           bg: 'var(--accent-red-dim)',   border: 'var(--accent-red)' },
+  'Strong Sell': { color: 'var(--accent-red)',           bg: 'var(--accent-red-dim)',   border: 'var(--accent-red)' },
+};
+
 export default function StockCard({ card, equalProjection }) {
-  const { ticker, name, price, fiftyTwoWeekLow, fiftyTwoWeekHigh, peRatio, marketCap, sector, reasoning, type, portfolioRole, retirementLens, watchOut, expenseRatio } = card;
+  const { ticker, name, price, fiftyTwoWeekLow, fiftyTwoWeekHigh, peRatio, marketCap, sector, reasoning, type, portfolioRole, retirementLens, watchOut, expenseRatio,
+    analystConsensus, newsSentimentScore, newsSentimentLabel, priceTargetConsensus } = card;
   const [lensOpen, setLensOpen] = useState(false);
   const [hoveredStat, setHoveredStat] = useState(null);
 
@@ -143,6 +154,32 @@ export default function StockCard({ card, equalProjection }) {
               fontFamily: "'DM Mono', monospace",
             }}>{portfolioRole}</span>
           )}
+          {type === 'stock' && analystConsensus && CONSENSUS_STYLE[analystConsensus] && (() => {
+            const cs = CONSENSUS_STYLE[analystConsensus];
+            return (
+              <span style={{
+                display: 'inline-block', marginTop: portfolioRole ? 4 : 0,
+                fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 100,
+                color: cs.color, background: cs.bg, border: `1px solid ${cs.border}`,
+                fontFamily: "'DM Mono', monospace",
+              }}>
+                Wall St. {analystConsensus}
+              </span>
+            );
+          })()}
+          {type === 'stock' && newsSentimentLabel && newsSentimentLabel !== 'Neutral' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 }}>
+              <span style={{
+                width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                background: newsSentimentLabel === 'Bullish' || newsSentimentLabel === 'Somewhat-Bullish'
+                  ? 'var(--accent-green-bright)'
+                  : 'var(--accent-red)',
+              }} />
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace" }}>
+                {newsSentimentLabel === 'Somewhat-Bullish' ? 'Bullish' : newsSentimentLabel === 'Somewhat-Bearish' ? 'Bearish' : newsSentimentLabel} news sentiment
+              </span>
+            </div>
+          )}
         </div>
         {sector && (
           <span style={{
@@ -171,20 +208,19 @@ export default function StockCard({ card, equalProjection }) {
         padding: 'var(--space-3) 0',
       }}>
         {(type === 'etf' || type === 'bond_etf') ? (() => {
-          // Expense ratio: lookup table (already in %) → FMP decimal (×100) → N/A
-          const knownRatio = ETF_EXPENSE_RATIOS[ticker];
-          const displayRatio = knownRatio != null
-            ? `${knownRatio.toFixed(2)}%`
-            : expenseRatio != null
-              ? `${(expenseRatio * 100).toFixed(2)}%`
+          // Expense ratio: FMP live (decimal ×100) → hardcoded fallback (already in %) → N/A
+          const displayRatio = expenseRatio != null
+            ? `${(expenseRatio * 100).toFixed(2)}%`
+            : ETF_EXPENSE_RATIOS[ticker] != null
+              ? `${ETF_EXPENSE_RATIOS[ticker].toFixed(2)}%`
               : 'N/A';
 
+          // Yield: FMP/Finnhub live (already in %) → hardcoded fallback (in %) → N/A
           const yieldLabel  = type === 'bond_etf' ? 'DIST. YIELD' : 'DIV. YIELD';
-          const knownYield  = ETF_KNOWN_YIELDS[ticker];
-          const displayYield = knownYield != null
-            ? `${knownYield.toFixed(2)}%`
-            : card.dividendYield != null
-              ? `${Number(card.dividendYield).toFixed(2)}%`
+          const displayYield = card.dividendYield != null
+            ? `${Number(card.dividendYield).toFixed(2)}%`
+            : ETF_KNOWN_YIELDS[ticker] != null
+              ? `${ETF_KNOWN_YIELDS[ticker].toFixed(2)}%`
               : 'N/A';
 
           return (
@@ -329,6 +365,20 @@ export default function StockCard({ card, equalProjection }) {
             <span style={{ color: 'var(--accent-green-bright)' }}>~${equalProjection.income.toLocaleString()}/yr</span>
             {' '}income
           </p>
+          {type === 'stock' && priceTargetConsensus != null && price != null && (() => {
+            const pct = ((priceTargetConsensus - price) / price * 100);
+            const isUp = pct >= 0;
+            return (
+              <p style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace", margin: '4px 0 0', lineHeight: 1.5 }}>
+                Wall St. consensus target:{' '}
+                <span style={{ color: 'var(--text-secondary)' }}>${priceTargetConsensus.toFixed(2)}</span>
+                {' '}
+                <span style={{ color: isUp ? 'var(--accent-green-bright)' : 'var(--accent-red)' }}>
+                  ({isUp ? '+' : ''}{pct.toFixed(1)}% from current price)
+                </span>
+              </p>
+            );
+          })()}
         </div>
       )}
     </div>

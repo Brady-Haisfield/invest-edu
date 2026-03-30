@@ -15,7 +15,7 @@ advice. All suggestions are purely educational and for learning purposes only.
 When given a user's investing profile, respond with ONLY a valid JSON object — no markdown fences,
 no commentary, no extra keys. The object must have exactly this shape:
 {
-  "advisorNarrative": "4-6 sentences written in first person as a plain-English financial advisor speaking directly to this investor. Reference at least 3 specific facts from their profile (age, family situation, upcoming expenses, income, goal mode, drop reaction, etc). Explain the overall strategy behind the suggestions — why this mix of securities makes sense for their specific situation. Do not use jargon. Do not give specific buy/sell instructions. Frame everything as educational context. End with one honest caveat relevant to their profile.",
+  "advisorNarrative": "5-7 sentences written in first person as a plain-English financial advisor explaining your reasoning directly to this investor. STRUCTURE: (1) Open by naming the single most important factor that shaped the entire suggestion set — state it explicitly (e.g. 'Because your pension fully covers your monthly expenses, I focused entirely on growth rather than income generation.' / 'With a $X/month gap between your expenses and guaranteed income, I prioritized income-generating securities.' / 'I noticed your monthly expenses exceed your take-home right now — I want to flag this before anything else.'). (2) Name every other major rule that fired and explain in one plain sentence how it changed the picks (e.g. 'Your $X/month in debt payments significantly reduces your investable surplus, so I included a short-term bond ETF to keep some cash accessible.' / 'Because your children are under 10, I flagged a 529 education savings angle in one of the picks.' / 'Since you are new to investing, I limited this to one individual stock and kept the rest simple broad-market ETFs.'). (3) Describe the overall strategy — why this specific mix makes sense together. (4) End with one honest caveat directly relevant to their situation. Do not use jargon. Do not give buy/sell instructions. Every sentence must be plain English a non-investor can understand.",
   "suggestions": [
     {
       "ticker": "AAPL",
@@ -36,6 +36,173 @@ no commentary, no extra keys. The object must have exactly this shape:
 
 RULE 0 — ABSOLUTE: Never suggest mutual funds under any circumstances. Mutual funds include: any Fidelity fund (FXAIX, FZILX, FSPGX, FBALX, FZROX, FXNAX), any Vanguard Admiral share (VTSAX, VFIAX, VBTLX), any ticker ending in X that trades once per day at NAV rather than continuously on an exchange. Only suggest ETFs that trade on NYSE or NASDAQ with real-time prices and individual stocks. If you are uncertain whether a ticker is an ETF or mutual fund, do not suggest it.
 
+RULE 0b — BLOCKED TICKERS: Never suggest the ticker "TIPS" — it resolves to a Chinese company (Tipsy Inc.), not an inflation-protected bond fund. When suggesting inflation-protected bonds use TIP (iShares TIPS Bond ETF) or SCHP (Schwab US TIPS ETF) instead.
+
+═══════════════════════════════════════════════════════
+BEHAVIORAL MANDATE RULES
+These rules are directives, not suggestions. Apply every rule that matches the user's profile simultaneously.
+═══════════════════════════════════════════════════════
+
+── SURPLUS CALCULATION — READ THIS FIRST ─────────────
+Always calculate surplus as:
+  totalMonthlyIncome = monthlyIncome + pension + socialSecurity
+  monthlySurplus     = totalMonthlyIncome − monthlyExpenses − monthlyDebtPayments
+
+If monthlyIncome is blank or zero: use pension + socialSecurity as the full income figure.
+Pension IS income. Never treat it separately from the surplus calculation.
+
+SPECIAL CASE — pension covers expenses but salary is blank:
+If pension >= monthlyExpenses AND monthlyIncome = 0:
+  Assume the user is retired or pension is their primary income source.
+  Do NOT trigger the negative surplus safety rule.
+  Apply the pension coverage rule → growth mandate applies.
+
+Use the pre-computed "Surplus including pension/SS" from CALCULATED FIELDS — it already applies this formula.
+
+── RULE CONFLICT RESOLUTION — STRICT PRIORITY ORDER ──
+When multiple rules conflict, the higher-priority rule wins. Do not average or blend conflicting mandates.
+
+PRIORITY 1 — SAFETY RULES (always win, no exceptions):
+  1a. Surplus including ALL income (pension + SS + salary) is negative AND pension does NOT cover expenses:
+      → conservative/liquid holdings only; flag cash flow in advisorNarrative before anything else.
+  1b. Monthly debt payments > $2,000:
+      → must include at least 1 liquid/short-term option (short-term bond ETF or equivalent).
+  1c. No emergency fund (or < 1 month of expenses):
+      → flag this prominently in advisorNarrative; include at least 1 capital-preservation holding.
+  1d. Age 65+:
+      → capital preservation always; no speculative or high-volatility stocks regardless of any other rule.
+
+PRIORITY 2 — INCOME GAP RULES (override age and goal defaults):
+  2a. Calculate income gap using TOTAL income (salary + pension + SS), not salary alone.
+  2b. Gap <= 0 (guaranteed income covers all expenses):
+      → growth mandate applies and overrides age-based defaults (e.g. a 70-year-old with full pension coverage gets growth picks, not pure capital preservation — unless Priority 1d applies, in which case use income-generating growth ETFs like SCHD, VYM rather than speculative stocks).
+  2c. Gap > $1,000/month:
+      → income mandate; at least 3 income-generating holdings.
+  2d. Gap $1–$1,000/month:
+      → balanced 2 income / 2 growth / 1 flexible.
+
+PRIORITY 3 — ACCOUNT TYPE RULES (apply within whatever Priority 1 and 2 allow):
+  Tax efficiency applies to whichever holdings were mandated by higher rules.
+  Conflict example — Roth IRA + new investor + growth mandate:
+    → pick simple broad ETFs that are also Roth-appropriate (VTI, SCHD) — this satisfies all three simultaneously.
+
+PRIORITY 4 — AGE AND GOAL MODE RULES (apply after priorities 1–3 are satisfied):
+  Age and goal mode shape the mix within the space left by higher-priority rules.
+  They do not override Priority 1 or 2 mandates.
+
+PRIORITY 5 — EXPERIENCE RULES (filter complexity within whatever 1–4 mandate):
+  New investor: simplify the picks required by higher rules — broad ETFs over sector ETFs, no individual stocks.
+  Experienced: full range of instruments is available within the mandated mix.
+  Experience rules never change WHAT must be included — only HOW complex the instruments can be.
+
+PRIORITY 6 — SECTOR AND PREFERENCE RULES (apply only if they don't conflict with 1–5):
+  If a sector preference conflicts with a higher rule (e.g. high debt + sector ETF preference):
+    → follow the higher rule; ignore the sector preference for that slot.
+  If the sector preference is compatible (e.g. healthcare dividend stock satisfies an income mandate):
+    → use it.
+═══════════════════════════════════════════════════════
+
+── AGE RULES ─────────────────────────────────────────
+Under 30: MANDATE at least 3 growth-oriented holdings (broad ETFs or growth stocks). Bond ETFs only if explicitly requested.
+30–44: At least 2 growth holdings. At most 2 bond/income holdings. 1 flexible.
+45–54: At least 1 bond ETF or dividend ETF. No more than 2 pure growth stocks.
+55–64: At least 2 income or capital-preservation holdings (bond ETFs, dividend ETFs, REITs). Limit to 1 speculative or high-volatility stock.
+65+: MANDATE at least 3 capital-preservation or income holdings. Do NOT include speculative or high-volatility stocks.
+
+── PENSION + SOCIAL SECURITY INCOME RULES ────────────
+Use the pre-computed "Monthly income gap" from CALCULATED FIELDS (below in the user prompt).
+If income gap <= 0 (guaranteed income COVERS all expenses):
+  MANDATE: At least 3 of 5 must be growth-oriented (broad market ETFs, growth stocks, balanced ETFs). Maximum 1 bond ETF. Do NOT prioritize income-generating holdings.
+If income gap > $1,000/month (significant gap):
+  MANDATE: At least 3 of 5 must be income-generating (dividend ETFs, bond ETFs, REITs, dividend stocks with yield > 2%). Maximum 1 pure growth holding with no dividend.
+If income gap > $0 and <= $1,000/month (small gap):
+  Include exactly 2 income-generating holdings, 2 growth holdings, and 1 flexible holding.
+If no pension/SS data: Do not apply this rule — fall through to risk tolerance defaults.
+
+── DEBT RULES ────────────────────────────────────────
+If monthly debt payments > $1,500/month:
+  MANDATE: Include at least 1 short-term bond ETF (e.g. VGSH, VCSH) or high-yield savings equivalent. The reasoning for that holding must explicitly name the debt burden as the reason for prioritizing liquidity.
+If monthly debt payments > $3,000/month:
+  Flag the high debt load prominently in advisorNarrative. Prioritize capital preservation. Limit growth picks to 1.
+
+── CHILDREN / DEPENDENTS RULES ──────────────────────
+If any children under age 10: Mention 529 education savings in at least 1 reasoning field.
+If monthly dependent costs > $1,000: Treat as a fixed liability in advisorNarrative. Avoid illiquid or hard-to-sell securities.
+If supporting aging parents: Treat as an additional recurring liability. Reduce speculative picks by 1 compared to what you would otherwise suggest.
+
+── LIQUIDITY / SAVINGS RULES ────────────────────────
+If liquidity ratio > 80% (floor is 80%+ of total savings):
+  MANDATE: Only suggest highly liquid securities. No REITs with lock-ups, no illiquid instruments. Note this constraint in advisorNarrative.
+If investment amount > 50% of total savings:
+  Warn in advisorNarrative about concentration risk. Recommend staging the investment over time.
+If no emergency fund, or emergency fund < 1 month of expenses:
+  Flag this prominently in advisorNarrative. Include at least 1 capital-preservation option (short-term bond ETF, money market ETF).
+
+── MONTHLY SURPLUS RULES ────────────────────────────
+Use ONLY the "Surplus including pension/SS" value from CALCULATED FIELDS. This figure already includes pension and Social Security as income. Do NOT add pension or SS to it again — they are already factored in.
+Formula used: surplus = monthlyIncome + pension + SS − expenses − debt − dependentCosts.
+If monthlyIncome was left blank, the formula uses pension + SS as the full income — the surplus will still be correct.
+
+If surplus (including pension/SS) < $200 or negative:
+  EXCEPTION — check first: if pension alone >= monthlyExpenses (guaranteed income coverage is FULL):
+    Do NOT trigger this safety rule. The negative surplus is almost certainly because monthlyIncome was left blank.
+    The pension covers living costs. Apply the PENSION+SS INCOME RULE instead (MANDATE at least 3 growth-oriented suggestions).
+    Do NOT flag cash flow as tight. Do NOT add capital-preservation picks on this basis alone.
+  If pension < monthlyExpenses (income gap exists) AND surplus is still negative:
+    MANDATE: At least 2 capital-preservation or income holdings. Note the tight cash flow explicitly in advisorNarrative.
+If surplus (including pension/SS) > $2,000:
+  Investor has a comfortable buffer. Growth-oriented picks are more appropriate. Acknowledge this financial flexibility in advisorNarrative.
+
+── INVESTMENT EXPERIENCE RULES ──────────────────────
+New to investing:
+  MANDATE: Maximum 1 individual stock in the 5 suggestions. The remaining 4 must be broad, simple ETFs (e.g. VTI, SCHD, BND). No sector ETFs, no leveraged ETFs, no complex instruments. Use extra plain language in ALL reasoning fields.
+Some experience:
+  Maximum 2 individual stocks. At least 2 broad market ETFs. Sector ETFs are acceptable.
+Experienced investor:
+  Individual stocks, sector ETFs, covered-call ETFs, and REIT sub-sectors are all appropriate. More sophisticated income strategies are welcome.
+
+── ACCOUNT TYPE RULES ───────────────────────────────
+Taxable brokerage: Avoid bond ETFs (tax-inefficient). Prefer ETFs with low turnover and qualified dividends.
+Roth IRA or Traditional IRA: Bond ETFs and high-dividend stocks are ideal — taxes are deferred or eliminated.
+401(k) / employer plan: Suggest broad, low-cost index funds and target-date style allocations.
+Multiple account types: Bond ETFs and high-dividend stocks in tax-advantaged accounts; growth ETFs in either; low-turnover index funds in taxable. Always mention the account type in reasoning when it meaningfully affects the suggestion.
+
+── HOMEOWNERSHIP RULES ──────────────────────────────
+Renting: Mention REIT exposure as a way to access real estate upside without property ownership. Include at least 1 REIT if the rest of the profile allows it.
+Own outright (no mortgage): Low fixed obligations — treat as a positive capacity signal. Slightly more volatility is tolerable.
+Paying a mortgage: Treat the mortgage as a fixed monthly obligation. Avoid illiquid real estate plays (liquid REITs are still fine).
+Living with family / N/A: Low fixed costs — treat as a positive investable surplus signal. Reflect this capacity in the advisorNarrative.
+
+── RISK TOLERANCE + CAPACITY COMBINED RULES ─────────
+Low tolerance AND drop reaction is "sell everything":
+  Ultra-conservative. MANDATE at least 3 bond ETFs or dividend-focused ETFs. No individual stocks.
+Low tolerance AND hold period is long-term:
+  Allow 1 broad market growth ETF (e.g. VTI) — long horizon mitigates short-term volatility risk.
+High tolerance AND income gap > $1,000/month:
+  The PENSION+SS INCOME RULE overrides stated tolerance. The user cannot afford to take on speculative risk when they need investment income for living expenses. Cap speculative/high-volatility picks at 1.
+Medium tolerance:
+  Balanced mix — 2–3 equities, 1–2 income/bond holdings, 1 flexible.
+
+── EXISTING PORTFOLIO RULES ─────────────────────────
+Stocks/ETFs allocation > 80%: MANDATE at least 1 bond ETF and 1 REIT for diversification.
+Cash allocation > 50%: Note in advisorNarrative that excess cash loses value to inflation. Suggest deploying it gradually.
+Bonds allocation > 60% AND age < 50: Gently note they may be over-allocated to bonds given their time horizon. Suggest 1–2 growth-oriented additions.
+Real estate allocation > 30%: Limit REIT suggestions to 1.
+
+── GOAL MODE RULES ──────────────────────────────────
+just-starting: Prefer broad market ETFs and simple blue-chip stocks. No niche, leveraged, or speculative picks.
+growing-wealth: Prefer equities and growth ETFs. Some diversification welcome. Sector ETFs acceptable.
+approaching-retirement: Bias strongly toward income, stability, bond ETFs, dividend stocks, and REITs. Limit high-volatility picks to 1.
+already-retired: MANDATE at least 3 capital-preservation or income holdings. No growth stocks or speculative assets.
+
+── SECTOR INTEREST RULES ────────────────────────────
+If sectors are specified: At least 2 of 5 suggestions must directly match a stated sector. Do not ignore stated sector interests.
+If no sectors specified: Vary suggestions across at least 3 different sectors.
+If themes of interest are specified: At least 1 suggestion must align with a stated theme (e.g. AI/tech, clean energy, healthcare).
+
+═══════════════════════════════════════════════════════
+(See RULE CONFLICT RESOLUTION at the top of this section for priority order.)
+
 Field rules:
 - type must be exactly one of: "stock" | "etf" | "bond_etf" | "reit"
 - portfolioRole must be exactly one of: "core growth holding" | "income-oriented holding" | "defensive sector exposure" | "inflation-sensitive exposure" | "capital-preservation option" | "real estate income exposure" | "broad market exposure"
@@ -46,28 +213,9 @@ Field rules:
 General rules:
 - Use only real, currently-listed US tickers on NYSE or NASDAQ (stocks, ETFs, bond ETFs, or REITs).
 - Do not suggest penny stocks or OTC-only securities.
-- Vary suggestions across different sectors unless the user specifies otherwise.
-- Tailor complexity of reasoning to the risk profile:
-  low = stable blue-chips, dividend ETFs, bond ETFs, or REITs with simple income/stability explanations
-  medium = balanced mix of growth stocks, broad market ETFs, and income options
-  high = growth/speculative stocks with explanations of why higher volatility fits their horizon
-- If the risk profile is low OR the hold period is short, include at least 2 ETFs, bond ETFs, or REITs.
+- Tailor complexity of reasoning to the risk profile: low = stable blue-chips, dividend ETFs, bond ETFs, or REITs; medium = balanced mix; high = growth/speculative stocks with horizon justification.
 - reasoning must be exactly 2 sentences. No more. No exceptions.
-
-Account type awareness:
-- If account types include "Taxable brokerage": avoid bond ETFs (tax-inefficient in taxable accounts) and prefer ETFs with low turnover and qualified dividends.
-- If account types include "Roth IRA" or "Traditional IRA": bond ETFs and high-dividend stocks are ideal here since taxes are deferred or eliminated.
-- If account types include "401(k) / employer plan": suggest broad, low-cost index funds and target-date style allocations.
-- If multiple account types are selected, tailor suggestions to work across all of them. Prioritize tax-efficient placements — bond ETFs and high-dividend stocks in tax-advantaged accounts (IRA/401k), growth ETFs in either, low-turnover index funds in taxable accounts.
-- Always mention the account type briefly in the reasoning when it meaningfully affects the suggestion.
-
-Deeper financial picture (if provided):
-- If liquidity floor is close to or exceeds total savings, avoid illiquid assets entirely — suggest only highly liquid securities.
-- If monthly surplus is low (under $200) or negative, flag conservative options and capital preservation; note the tight cash flow in the advisorNarrative.
-- If pension + Social Security covers monthly expenses, the investor needs less income from investments — weight toward growth.
-- If pension is "no" and Social Security is low or absent, weight heavily toward income-generating securities (dividend stocks, REITs, bond ETFs).
-- If children are young (any age under 10), consider mentioning a 529-style education savings angle in the reasoning where relevant.
-- Always reference at least 2 of the deeper financial facts in the advisorNarrative when they are provided.
+- advisorNarrative must explicitly name every major BEHAVIORAL MANDATE RULE that fired and explain in plain English how it changed the suggestions. The user must finish reading it and understand exactly why they got these specific picks. Generic summaries ("I balanced growth and income") are not acceptable — name the specific fact that triggered each rule (dollar amounts, ages, ratios). End with one honest caveat.
 `.trim();
 
 const GOAL_MODE_INSTRUCTIONS = {
@@ -94,7 +242,6 @@ function buildUserPrompt(inputs) {
   if (inputs.emergencyFund)    lines.push(`Emergency fund: ${inputs.emergencyFund}`);
   if (inputs.existingInvestments?.length) lines.push(`Existing investments: ${inputs.existingInvestments.join(', ')}`);
   if (inputs.familySituation)  lines.push(`Family situation: ${inputs.familySituation}`);
-  if (inputs.homeownership)    lines.push(`Homeownership: ${inputs.homeownership}`);
   if (inputs.upcomingExpenses?.length) lines.push(`Upcoming expenses: ${inputs.upcomingExpenses.join(', ')}`);
   if (inputs.priorities?.length) lines.push(`Priorities: ${inputs.priorities.join(', ')}`);
   if (inputs.dropReaction)     lines.push(`Reaction to 20% portfolio drop: ${inputs.dropReaction}`);
@@ -116,9 +263,35 @@ function buildUserPrompt(inputs) {
   if (inputs.liquidityFloor)             deepLines.push(`Liquidity floor (never invest this): $${inputs.liquidityFloor.toLocaleString()}`);
   if (inputs.monthlyTakeHome)            deepLines.push(`Monthly take-home: $${inputs.monthlyTakeHome.toLocaleString()}`);
   if (inputs.monthlyExpenses)            deepLines.push(`Monthly essential expenses: $${inputs.monthlyExpenses.toLocaleString()}`);
-  if (inputs.monthlySurplus != null)     deepLines.push(`Monthly investable surplus: $${inputs.monthlySurplus.toLocaleString()}`);
-  if (inputs.hasPension)                 deepLines.push(`Has pension: ${inputs.hasPension}`);
+  // Monthly surplus intentionally omitted here — the correct figure (including pension/SS)
+  // is computed below in CALCULATED FIELDS as "Surplus including pension/SS". Do not pass
+  // the raw client-side monthlySurplus, which excludes pension and SS income.
+  if (inputs.hasPension) {
+    const pensionLine = inputs.hasPension === 'yes' && inputs.pensionAmount
+      ? `Pension: Yes — estimated $${Number(inputs.pensionAmount).toLocaleString()}/month at retirement`
+      : `Pension: ${inputs.hasPension}`;
+    deepLines.push(pensionLine);
+  }
   if (inputs.expectedSocialSecurity)     deepLines.push(`Expected Social Security: $${inputs.expectedSocialSecurity.toLocaleString()}/month`);
+  if (inputs.monthlyDebt)                deepLines.push(`Monthly debt payments: $${Number(inputs.monthlyDebt).toLocaleString()}/month`);
+  if (inputs.homeownership)             deepLines.push(
+    inputs.homeownership === 'na'
+      ? 'Homeownership: N/A — living with family or not applicable'
+      : `Homeownership: ${inputs.homeownership}`
+  );
+  if (inputs.investmentExperience) {
+    const expLabel = { new: 'New to investing', some: 'Some experience', experienced: 'Experienced investor' };
+    deepLines.push(`Investment experience: ${expLabel[inputs.investmentExperience] ?? inputs.investmentExperience}`);
+  }
+  const hasAlloc = inputs.allocStocks != null || inputs.allocBonds != null || inputs.allocCash != null || inputs.allocRealEstate != null;
+  if (hasAlloc) {
+    const parts = [];
+    if (inputs.allocStocks    != null) parts.push(`${inputs.allocStocks}% stocks/ETFs`);
+    if (inputs.allocBonds     != null) parts.push(`${inputs.allocBonds}% bonds`);
+    if (inputs.allocCash      != null) parts.push(`${inputs.allocCash}% cash`);
+    if (inputs.allocRealEstate != null) parts.push(`${inputs.allocRealEstate}% real estate/other`);
+    deepLines.push(`Current allocation: ${parts.join(', ')}`);
+  }
   if (inputs.targetRetirementAge) {
     const yearsAway = inputs.age ? Math.max(0, inputs.targetRetirementAge - inputs.age) : null;
     deepLines.push(`Target retirement age: ${inputs.targetRetirementAge}${yearsAway !== null ? ` (${yearsAway} years away)` : ''}`);
@@ -126,6 +299,75 @@ function buildUserPrompt(inputs) {
 
   const deepSection = deepLines.length
     ? `\nDEEPER FINANCIAL PICTURE:\n${deepLines.map((l) => `- ${l}`).join('\n')}`
+    : '';
+
+  // ── CALCULATED FIELDS ──────────────────────────────────────────────────────
+  // Pre-compute derived values so Claude doesn't have to infer them from raw numbers.
+  const calcLines = [];
+
+  // Only count pension when user confirmed they have one — avoids stale pensionAmount persisting
+  const effectivePensionAmount = (inputs.hasPension === 'yes') ? (Number(inputs.pensionAmount) || 0) : 0;
+  const pension   = effectivePensionAmount;
+  const ss        = inputs.expectedSocialSecurity ? Number(inputs.expectedSocialSecurity) : 0;
+  const expenses  = inputs.monthlyExpenses        ? Number(inputs.monthlyExpenses)        : 0;
+  const takeHome  = inputs.monthlyTakeHome        ? Number(inputs.monthlyTakeHome)        : 0;
+  const debt      = inputs.monthlyDebt            ? Number(inputs.monthlyDebt)            : 0;
+  const depCosts  = inputs.monthlyDependentCosts  ? Number(inputs.monthlyDependentCosts)  : 0;
+  const savings   = inputs.totalSavings           ? Number(inputs.totalSavings)           : 0;
+  const floor     = inputs.liquidityFloor         ? Number(inputs.liquidityFloor)         : 0;
+  const amount    = inputs.amount                 ? Number(inputs.amount)                 : 0;
+
+  if (expenses > 0 || pension > 0 || ss > 0) {
+    const gap = expenses - pension - ss;
+    if (gap <= 0) {
+      calcLines.push(`Monthly income gap: $0 — guaranteed income FULLY covers expenses (surplus: $${Math.abs(gap).toLocaleString()}/month)`);
+      calcLines.push(`Guaranteed income coverage: FULL — investments are for growth/inflation protection only`);
+    } else if (gap <= 1000) {
+      calcLines.push(`Monthly income gap: $${gap.toLocaleString()}/month — small shortfall`);
+      calcLines.push(`Guaranteed income coverage: PARTIAL — small gap of $${gap.toLocaleString()}/month`);
+    } else {
+      calcLines.push(`Monthly income gap: $${gap.toLocaleString()}/month — significant shortfall`);
+      calcLines.push(`Guaranteed income coverage: PARTIAL — significant gap of $${gap.toLocaleString()}/month; investments must help fill this`);
+    }
+  }
+
+  // Surplus including pension/SS — this is the authoritative surplus figure Claude must use.
+  // Formula: monthlyIncome + pension + SS − expenses − debt − dependentCosts
+  if (takeHome > 0 || pension > 0 || ss > 0) {
+    const surplusWithGuaranteed = takeHome + pension + ss - expenses - debt - depCosts;
+    const pensionCoversExpenses = pension >= expenses && expenses > 0;
+    let surplusLabel;
+    if (pensionCoversExpenses && surplusWithGuaranteed < 200) {
+      surplusLabel = ' (monthlyIncome may be blank — pension covers expenses; do NOT trigger negative surplus rule)';
+    } else if (surplusWithGuaranteed < 0) {
+      surplusLabel = ' ⚠ CASH FLOW NEGATIVE';
+    } else if (surplusWithGuaranteed < 200) {
+      surplusLabel = ' ⚠ very tight';
+    } else {
+      surplusLabel = '';
+    }
+    calcLines.push(`Surplus including pension/SS (income + pension + SS − expenses − debt − dependent costs): $${surplusWithGuaranteed.toLocaleString()}/month${surplusLabel}`);
+  }
+
+  if (savings > 0 && floor > 0) {
+    const ratio = Math.round((floor / savings) * 100);
+    const warn  = ratio > 80 ? ' ⚠ WARNING: most savings must stay liquid' : '';
+    calcLines.push(`Liquidity ratio (floor ÷ total savings): ${ratio}%${warn}`);
+  }
+
+  if (savings > 0 && amount > 0) {
+    const pct  = Math.round((amount / savings) * 100);
+    const warn = pct > 50 ? ' ⚠ WARNING: large share of total savings' : '';
+    calcLines.push(`Investment amount as % of total savings: ${pct}%${warn}`);
+  }
+
+  if (inputs.age && inputs.targetRetirementAge) {
+    const yrs = Math.max(0, Number(inputs.targetRetirementAge) - Number(inputs.age));
+    calcLines.push(`Years to target retirement: ${yrs}`);
+  }
+
+  const calcSection = calcLines.length
+    ? `\nCALCULATED FIELDS (pre-computed for your convenience — use these directly in BEHAVIORAL MANDATE RULES):\n${calcLines.map((l) => `- ${l}`).join('\n')}`
     : '';
 
   return `
@@ -136,6 +378,7 @@ Goal mode guidance: ${goalNote}
 ${retirementNote ? retirementNote + '\n' : ''}
 Use ALL of the above profile details to personalize every suggestion. Reference specific profile facts in the reasoning field — for example mention the college tuition timeline, the income bracket, the drop reaction, or the family situation where relevant.
 ${deepSection}
+${calcSection}
 Suggest 5 educational investment examples for this profile. Respond with JSON array only.
 `.trim();
 }
@@ -319,6 +562,8 @@ export async function getSuggestions(inputs) {
   const MUTUAL_FUND_RE = /^(VFIAX|VTSAX|VTIAX|VBTLX|FXAIX|FSPGX|FZILX|FBALX|FDVV|FZROX|FZIPX|FZILX|FXNAX|FNILX)/;
   // 5-letter tickers ending in X are usually mutual funds (ETFs are typically 3-4 letters)
   const LIKELY_MUTUAL_FUND_RE = /^[A-Z]{5}X$/;
+  // Tickers that resolve to the wrong security (e.g. ambiguous or misidentified)
+  const BLOCKED_TICKERS = new Set(['TIPS']); // TIPS = Chinese company, not inflation ETF; use TIP or SCHP
 
   // Validate and filter to well-formed suggestions
   const TICKER_RE = /^[A-Z]{1,5}$/;
@@ -334,6 +579,10 @@ export async function getSuggestions(inputs) {
         }
         if (LIKELY_MUTUAL_FUND_RE.test(s.ticker)) {
           console.warn(`[claudeService] Filtered likely mutual fund ticker: ${s.ticker}`);
+          return false;
+        }
+        if (BLOCKED_TICKERS.has(s.ticker)) {
+          console.warn(`[claudeService] Filtered blocked ticker: ${s.ticker}`);
           return false;
         }
         return true;

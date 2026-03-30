@@ -309,7 +309,7 @@ export default function AllocationBuilder({ cards, inputs, treasuryRates }) {
         })()}
 
         <p style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.5, margin: 0 }}>
-          Return methodology: Stocks use Bogle dividend+growth model blended with CAPM. ETFs use CAPM with actual beta. Bond ETFs use live US Treasury yields from the Federal Reserve (updated daily). REITs use dividend yield weighted with FFO growth. Pessimistic/optimistic range reflects ±40% variance in base estimate. Not a guarantee of future returns.
+          Return methodology: Individual stocks use a weighted blend of Wall Street analyst consensus price targets (40%), Bogle fundamental model using forward EPS estimates (35%), and CAPM risk-adjusted market return (25%), adjusted for recent news sentiment. Pessimistic/optimistic scenarios use the actual analyst high/low price target range when available. ETFs use CAPM with actual beta and live Vanguard VCMM-calibrated sector rates. Bond ETFs use live Federal Reserve Treasury yields. REITs use dividend yield weighted with revenue growth. S&P 500 comparison uses live Shiller CAPE ratio from the Federal Reserve (updated daily). All data updated on every search. Not a guarantee of future returns.
         </p>
       </div>
     </div>

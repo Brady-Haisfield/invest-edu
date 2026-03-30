@@ -3,8 +3,8 @@ import { validateInputs } from '../utils/validators.js';
 import { getSuggestions } from '../services/claudeService.js';
 import { getQuote } from '../services/yahooService.js';
 import { getTreasuryRates } from '../services/fredService.js';
-import { getAnalystData, getETFInfo } from '../services/fmpService.js';
-import { getOverview } from '../services/alphaService.js';
+import { getAnalystData, getETFInfo, getPriceTarget, getAnalystSentiment, getETFHoldings } from '../services/fmpService.js';
+import { getOverview, getNewsSentiment } from '../services/alphaService.js';
 
 const router = Router();
 
@@ -82,10 +82,62 @@ router.post('/', async (req, res, next) => {
       })
     );
 
+    // ── Layer 4: analyst enrichment (stocks) + holdings/news (ETFs/REITs) ─────
+    const [ptResults, sentimentResults, newsResults, holdingsResults] = await Promise.all([
+      // Price targets: stocks and REITs
+      Promise.allSettled(baseCards.map((c) =>
+        (c.type === 'stock' || c.type === 'reit') ? getPriceTarget(c.ticker) : Promise.resolve(null)
+      )),
+      // Analyst sentiment: stocks only
+      Promise.allSettled(baseCards.map((c) =>
+        c.type === 'stock' ? getAnalystSentiment(c.ticker) : Promise.resolve(null)
+      )),
+      // News sentiment: all card types
+      Promise.allSettled(baseCards.map((c) => getNewsSentiment(c.ticker))),
+      // ETF holdings: ETF and bond_etf only
+      Promise.allSettled(baseCards.map((c) =>
+        (c.type === 'etf' || c.type === 'bond_etf') ? getETFHoldings(c.ticker) : Promise.resolve(null)
+      )),
+    ]);
+
+    // ── Layer 4b: for ETFs with holdings, fetch price targets + quotes ────────
+    // Compute a holdings-weighted analyst implied return per ETF card.
+    const etfHoldingsReturnResults = await Promise.allSettled(
+      baseCards.map(async (card, i) => {
+        if (card.type !== 'etf' && card.type !== 'bond_etf') return null;
+        const holdings = holdingsResults[i].status === 'fulfilled' ? holdingsResults[i].value : null;
+        if (!holdings || holdings.length === 0) return null;
+
+        const top5 = holdings.slice(0, 5);
+        const [ptData, quoteData] = await Promise.all([
+          Promise.allSettled(top5.map((h) => getPriceTarget(h.ticker))),
+          Promise.allSettled(top5.map((h) => getQuote(h.ticker))),
+        ]);
+
+        let totalWeight = 0;
+        let weightedReturn = 0;
+        top5.forEach((h, j) => {
+          const pt = ptData[j].status    === 'fulfilled' ? ptData[j].value    : null;
+          const q  = quoteData[j].status === 'fulfilled' ? quoteData[j].value : null;
+          if (pt?.targetConsensus && q?.price && q.price > 0) {
+            const impliedReturn = ((pt.targetConsensus - q.price) / q.price) * 0.6;
+            weightedReturn += impliedReturn * h.weight;
+            totalWeight    += h.weight;
+          }
+        });
+
+        return totalWeight > 0 ? weightedReturn / totalWeight : null;
+      })
+    );
+
     // ── Merge all layers ──────────────────────────────────────────────────────
     const cards = baseCards.map((card, i) => {
-      const fmpData   = fmpResults[i].status   === 'fulfilled' ? fmpResults[i].value   : null;
-      const alphaData = alphaResults[i].status === 'fulfilled' ? alphaResults[i].value : null;
+      const fmpData            = fmpResults[i].status              === 'fulfilled' ? fmpResults[i].value              : null;
+      const alphaData          = alphaResults[i].status            === 'fulfilled' ? alphaResults[i].value            : null;
+      const ptData             = ptResults[i].status               === 'fulfilled' ? ptResults[i].value               : null;
+      const sentimentData      = sentimentResults[i].status        === 'fulfilled' ? sentimentResults[i].value        : null;
+      const newsData           = newsResults[i].status             === 'fulfilled' ? newsResults[i].value             : null;
+      const etfHoldingsReturn  = etfHoldingsReturnResults[i].status === 'fulfilled' ? etfHoldingsReturnResults[i].value : null;
 
       // Enrich with FMP
       const enriched = { ...card };
@@ -111,6 +163,34 @@ router.post('/', async (req, res, next) => {
         if (!isValidNum(enriched.revenueGrowth3Y) && isValidNum(alphaData.revGrowthYOY)) {
           enriched.revenueGrowth3Y = alphaData.revGrowthYOY;
         }
+      }
+
+      // Enrich with analyst price targets (stocks only)
+      if (ptData) {
+        enriched.priceTargetConsensus = ptData.targetConsensus;
+        enriched.priceTargetHigh      = ptData.targetHigh;
+        enriched.priceTargetLow       = ptData.targetLow;
+      }
+
+      // Enrich with analyst sentiment consensus (stocks only)
+      if (sentimentData) {
+        enriched.analystConsensus = sentimentData.consensus;
+      }
+
+      // News sentiment — all card types
+      if (newsData) {
+        enriched.newsSentimentScore = newsData.sentimentScore;
+        enriched.newsSentimentLabel = newsData.sentimentLabel;
+      }
+
+      // ETF holdings-weighted analyst implied return
+      if (etfHoldingsReturn != null) {
+        enriched.etfHoldingsReturn = etfHoldingsReturn;
+      }
+
+      // Average duration from ETF info (bond ETFs)
+      if (fmpData?.averageDuration != null) {
+        enriched.averageDuration = fmpData.averageDuration;
       }
 
       return enriched;

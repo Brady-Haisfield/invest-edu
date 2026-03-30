@@ -29,16 +29,28 @@ const INITIAL_REFINE = {
   monthlyTakeHome:        '',
   monthlyExpenses:        '',
   hasPension:             null,
+  pensionAmount:          '',
   expectedSocialSecurity: '',
   targetRetirementAge:    '',
+  monthlyDebt:            '',
+  homeownership:          null,
+  investmentExperience:   null,
+  allocStocks:            '',
+  allocBonds:             '',
+  allocCash:              '',
+  allocRealEstate:        '',
 };
 
 function buildMergedInputs(profileInputs, refineInputs) {
   if (!profileInputs) return null;
   const r = refineInputs ?? INITIAL_REFINE;
   const takeHome  = Number(r.monthlyTakeHome) || 0;
+  const pension   = (r.hasPension === 'yes') ? (Number(r.pensionAmount) || 0) : 0;
+  const ss        = Number(r.expectedSocialSecurity) || 0;
   const expenses  = Number(r.monthlyExpenses) || 0;
-  const showSurplus = r.monthlyTakeHome !== '' || r.monthlyExpenses !== '';
+  const debt      = Number(r.monthlyDebt) || 0;
+  const totalIncome = takeHome + pension + ss;
+  const showSurplus = r.monthlyTakeHome !== '' || r.monthlyExpenses !== '' || (r.hasPension === 'yes' && r.pensionAmount !== '') || r.expectedSocialSecurity !== '';
   return {
     ...profileInputs,
     numChildren:             r.numChildren !== '' ? Number(r.numChildren) : null,
@@ -49,10 +61,18 @@ function buildMergedInputs(profileInputs, refineInputs) {
     liquidityFloor:          r.liquidityFloor !== '' ? Number(r.liquidityFloor) : null,
     monthlyTakeHome:         r.monthlyTakeHome !== '' ? Number(r.monthlyTakeHome) : null,
     monthlyExpenses:         r.monthlyExpenses !== '' ? Number(r.monthlyExpenses) : null,
-    monthlySurplus:          showSurplus ? (takeHome - expenses) : null,
+    monthlySurplus:          showSurplus ? (totalIncome - expenses - debt) : null,
     hasPension:              r.hasPension || null,
+    pensionAmount:           r.pensionAmount !== '' ? Number(r.pensionAmount) : null,
     expectedSocialSecurity:  r.expectedSocialSecurity !== '' ? Number(r.expectedSocialSecurity) : null,
     targetRetirementAge:     r.targetRetirementAge !== '' ? Number(r.targetRetirementAge) : null,
+    monthlyDebt:             r.monthlyDebt !== '' ? Number(r.monthlyDebt) : null,
+    homeownership:           r.homeownership || profileInputs?.homeownership || null,
+    investmentExperience:    r.investmentExperience || null,
+    allocStocks:             r.allocStocks !== '' ? Number(r.allocStocks) : null,
+    allocBonds:              r.allocBonds  !== '' ? Number(r.allocBonds)  : null,
+    allocCash:               r.allocCash   !== '' ? Number(r.allocCash)   : null,
+    allocRealEstate:         r.allocRealEstate !== '' ? Number(r.allocRealEstate) : null,
   };
 }
 
@@ -72,7 +92,7 @@ export default function App() {
   const [hasProfile, setHasProfile]       = useState(false);
   const [profileInputs, setProfileInputs] = useState(null);
   const [refineInputs, setRefineInputs]   = useState(INITIAL_REFINE);
-  const [isAutoUpdating, setIsAutoUpdating] = useState(false);
+  const [isRefineUpdating, setIsRefineUpdating] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [showFullForm, setShowFullForm]   = useState(false);
 
@@ -102,8 +122,6 @@ export default function App() {
   const refineRef        = useRef(refineInputs);
   const cardsRef         = useRef(cards);
   const narrativeRef     = useRef(advisorNarrative);
-  const refineChangedRef = useRef(false);
-
   useEffect(() => { tokenRef.current = token; },              [token]);
   useEffect(() => { profileRef.current = profileInputs; },    [profileInputs]);
   useEffect(() => { refineRef.current = refineInputs; },      [refineInputs]);
@@ -187,49 +205,6 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // Auto-save and auto-run when refine inputs change
-  useEffect(() => {
-    if (!refineChangedRef.current) return;
-
-    const saveTimer = setTimeout(() => {
-      const tok = tokenRef.current;
-      const prof = profileRef.current;
-      if (tok && prof) {
-        saveProfile(tok, {
-          inputs: prof,
-          refineInputs: refineRef.current,
-          lastCards: cardsRef.current ?? null,
-          lastAdvisorNarrative: narrativeRef.current ?? null,
-        }).catch(() => {});
-      }
-    }, 500);
-
-    const runTimer = setTimeout(async () => {
-      const prof = profileRef.current;
-      const ri   = refineRef.current;
-      const tok  = tokenRef.current;
-      if (!prof) return;
-
-      setIsAutoUpdating(true);
-      const merged = buildMergedInputs(prof, ri);
-      const result = await handleSubmitCore(merged);
-      setIsAutoUpdating(false);
-
-      if (result && tok) {
-        saveProfile(tok, {
-          inputs: prof,
-          refineInputs: ri,
-          lastCards: result.cards,
-          lastAdvisorNarrative: result.advisorNarrative ?? null,
-        }).catch(() => {});
-      }
-    }, 1000);
-
-    return () => {
-      clearTimeout(saveTimer);
-      clearTimeout(runTimer);
-    };
-  }, [refineInputs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleAuthSuccess(authUser, authToken) {
     setUser(authUser);
@@ -281,7 +256,6 @@ export default function App() {
     setHasProfile(false);
     setProfileInputs(null);
     setRefineInputs(INITIAL_REFINE);
-    refineChangedRef.current = false;
   }
 
   function handleLoadPlan(plan) {
@@ -319,7 +293,6 @@ export default function App() {
   async function handleFirstSetup(formData) {
     setProfileInputs(formData);
     setHasProfile(true);
-    refineChangedRef.current = false;
     const result = await handleSubmitCore(formData);
     const tok = tokenRef.current;
     console.log('[handleFirstSetup] result:', !!result, '| token:', tok ? tok.slice(0, 20) + '…' : 'null');
@@ -341,7 +314,6 @@ export default function App() {
   async function handleEditProfileSave(formData) {
     setProfileInputs(formData);
     setShowEditProfile(false);
-    refineChangedRef.current = false;
     const ri  = refineRef.current;
     const tok = tokenRef.current;
     const merged = buildMergedInputs(formData, ri);
@@ -358,8 +330,31 @@ export default function App() {
 
   // Called by DashboardPanel on any field change
   function handleRefineChange(updates) {
-    refineChangedRef.current = true;
     setRefineInputs((prev) => ({ ...prev, ...updates }));
+  }
+
+  // Called when user clicks "Update My Plan →" in refine panel
+  async function handleRefineUpdate(onSuccess) {
+    if (isRefineUpdating) return;
+    const prof = profileRef.current;
+    const ri   = refineRef.current;
+    const tok  = tokenRef.current;
+    if (!prof) return;
+    setIsRefineUpdating(true);
+    const merged = buildMergedInputs(prof, ri);
+    const result = await handleSubmitCore(merged);
+    setIsRefineUpdating(false);
+    if (result) {
+      onSuccess?.();
+      if (tok) {
+        saveProfile(tok, {
+          inputs: prof,
+          refineInputs: ri,
+          lastCards: result.cards,
+          lastAdvisorNarrative: result.advisorNarrative ?? null,
+        }).catch(() => {});
+      }
+    }
   }
 
   function openAuthModal(tab) {
@@ -493,8 +488,8 @@ export default function App() {
                   profileInputs={profileInputs}
                   refineInputs={refineInputs}
                   onRefineChange={handleRefineChange}
-                  isAutoUpdating={isAutoUpdating || loading}
-                  disabled={loading}
+                  onUpdatePlan={handleRefineUpdate}
+                  disabled={loading || isRefineUpdating}
                   onEditProfile={() => setShowEditProfile(true)}
                 />
               ) : (
