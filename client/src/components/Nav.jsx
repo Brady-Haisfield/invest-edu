@@ -28,6 +28,14 @@ export default function Nav({ currentPage, onNavigate, user, onSignIn, onSignOut
         >
           My Dashboard
         </button>
+        {user && (
+          <button
+            className={`nav-pill${currentPage === 'portfolio' ? ' active' : ''}`}
+            onClick={() => onNavigate('portfolio')}
+          >
+            My Portfolio
+          </button>
+        )}
         <button
           className={`nav-pill${currentPage === 'forecast' ? ' active' : ''}`}
           onClick={() => onNavigate('forecast')}

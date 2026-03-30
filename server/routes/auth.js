@@ -231,4 +231,158 @@ router.delete('/saved-plans/:id', requireAuth, (req, res, next) => {
   }
 });
 
+// ── Portfolio helpers ────────────────────────────────────────────────────────
+
+async function fetchSimpleQuote(ticker) {
+  try {
+    const key = process.env.FINNHUB_API_KEY;
+    if (!key) {
+      console.warn('[fetchSimpleQuote] FINNHUB_API_KEY not set — skipping price fetch');
+      return { ticker, currentPrice: null, dayChangePct: null };
+    }
+    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${key}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn(`[fetchSimpleQuote] Finnhub returned ${res.status} for ${ticker}`);
+      return { ticker, currentPrice: null, dayChangePct: null };
+    }
+    const data = await res.json();
+    return { ticker, currentPrice: data.c || null, dayChangePct: data.dp ?? null };
+  } catch (err) {
+    console.warn(`[fetchSimpleQuote] failed for ${ticker}:`, err.message);
+    return { ticker, currentPrice: null, dayChangePct: null };
+  }
+}
+
+// ── POST /api/auth/portfolio/add ─────────────────────────────────────────────
+
+router.post('/portfolio/add', requireAuth, async (req, res, next) => {
+  try {
+    console.log('Portfolio add received:', req.body);
+
+    const { ticker, name, securityType, amountInvested, purchasePrice, purchaseMonth, purchaseYear, accountType, addedFrom } = req.body;
+
+    if (!ticker || typeof ticker !== 'string') return res.status(400).json({ error: 'ticker is required' });
+    const cleanTicker = ticker.trim().toUpperCase();
+    if (!cleanTicker || cleanTicker.length > 10) return res.status(400).json({ error: 'Invalid ticker' });
+
+    const amount = parseFloat(amountInvested);
+    if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'amountInvested must be a positive number' });
+
+    let purchasePriceResolved = null;
+    if (purchasePrice != null && purchasePrice !== '') {
+      const parsed = parseFloat(purchasePrice);
+      if (Number.isFinite(parsed) && parsed > 0) purchasePriceResolved = parsed;
+    }
+
+    // Fetch current Finnhub price as cost basis only if no purchase price provided.
+    // This is best-effort — failure here must never block the insert.
+    if (!purchasePriceResolved) {
+      const q = await fetchSimpleQuote(cleanTicker);
+      console.log(`[portfolio/add] Finnhub quote for ${cleanTicker}:`, q);
+      if (q.currentPrice) purchasePriceResolved = q.currentPrice;
+    }
+
+    const shares = purchasePriceResolved ? amount / purchasePriceResolved : null;
+
+    console.log(`[portfolio/add] inserting: ticker=${cleanTicker} amount=${amount} price=${purchasePriceResolved} shares=${shares}`);
+
+    const result = db.prepare(`
+      INSERT INTO portfolio_holdings
+        (user_id, ticker, name, security_type, amount_invested, shares, purchase_price, purchase_month, purchase_year, account_type, added_from)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      req.userId,
+      cleanTicker,
+      name ? String(name).slice(0, 200) : null,
+      securityType || null,
+      amount,
+      shares,
+      purchasePriceResolved,
+      purchaseMonth ? Number(purchaseMonth) : null,
+      purchaseYear ? Number(purchaseYear) : null,
+      accountType ? String(accountType) : null,
+      addedFrom ? String(addedFrom) : 'manual',
+    );
+
+    console.log('[portfolio/add] inserted id:', result.lastInsertRowid);
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (err) {
+    console.error('[portfolio/add] error:', err.message, err.stack);
+    next(err);
+  }
+});
+
+// ── GET /api/auth/portfolio/holdings ─────────────────────────────────────────
+
+router.get('/portfolio/holdings', requireAuth, async (req, res, next) => {
+  try {
+    const rows = db.prepare(`
+      SELECT id, ticker, name, security_type, amount_invested, shares, purchase_price,
+             purchase_month, purchase_year, account_type, added_from, added_at
+      FROM portfolio_holdings WHERE user_id = ?
+      ORDER BY added_at DESC
+    `).all(req.userId);
+
+    if (rows.length === 0) return res.json({ holdings: [] });
+
+    const uniqueTickers = [...new Set(rows.map((r) => r.ticker))];
+    const quoteResults = await Promise.allSettled(uniqueTickers.map(fetchSimpleQuote));
+    const priceMap = {};
+    quoteResults.forEach((r) => {
+      if (r.status === 'fulfilled') priceMap[r.value.ticker] = r.value;
+    });
+
+    const holdings = rows.map((r) => {
+      const q = priceMap[r.ticker] ?? {};
+      const currentPrice = q.currentPrice ?? null;
+      const currentValue = (r.shares != null && currentPrice != null) ? r.shares * currentPrice : null;
+      const gainLoss = currentValue != null ? currentValue - r.amount_invested : null;
+      const gainLossPct = gainLoss != null && r.amount_invested > 0 ? (gainLoss / r.amount_invested) * 100 : null;
+      const dayChange = currentValue != null && q.dayChangePct != null ? currentValue * (q.dayChangePct / 100) : null;
+
+      return {
+        id: r.id,
+        ticker: r.ticker,
+        name: r.name,
+        securityType: r.security_type,
+        amountInvested: r.amount_invested,
+        shares: r.shares,
+        purchasePrice: r.purchase_price,
+        purchaseMonth: r.purchase_month,
+        purchaseYear: r.purchase_year,
+        accountType: r.account_type,
+        addedFrom: r.added_from,
+        addedAt: r.added_at,
+        currentPrice,
+        currentValue,
+        gainLoss,
+        gainLossPct,
+        dayChange,
+        dayChangePct: q.dayChangePct ?? null,
+      };
+    });
+
+    res.json({ holdings });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── DELETE /api/auth/portfolio/holdings/:id ───────────────────────────────────
+
+router.delete('/portfolio/holdings/:id', requireAuth, (req, res, next) => {
+  try {
+    const holdingId = Number(req.params.id);
+    if (!Number.isFinite(holdingId)) return res.status(400).json({ error: 'Invalid id' });
+
+    const result = db.prepare('DELETE FROM portfolio_holdings WHERE id = ? AND user_id = ?').run(holdingId, req.userId);
+    if (result.changes === 0) return res.status(404).json({ error: 'Holding not found' });
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

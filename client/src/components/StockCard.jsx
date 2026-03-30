@@ -118,7 +118,7 @@ const CONSENSUS_STYLE = {
   'Strong Sell': { color: 'var(--accent-red)',           bg: 'var(--accent-red-dim)',   border: 'var(--accent-red)' },
 };
 
-export default function StockCard({ card, equalProjection }) {
+export default function StockCard({ card, equalProjection, user, isInPortfolio, onAddToPortfolio }) {
   const { ticker, name, price, fiftyTwoWeekLow, fiftyTwoWeekHigh, peRatio, marketCap, sector, reasoning, type, portfolioRole, retirementLens, watchOut, expenseRatio,
     analystConsensus, newsSentimentScore, newsSentimentLabel, priceTargetConsensus } = card;
   const [lensOpen, setLensOpen] = useState(false);
@@ -379,6 +379,31 @@ export default function StockCard({ card, equalProjection }) {
               </p>
             );
           })()}
+        </div>
+      )}
+
+      {/* Add to Portfolio */}
+      {user && onAddToPortfolio && (
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 'var(--space-3)' }}>
+          <button
+            type="button"
+            onClick={() => !isInPortfolio && onAddToPortfolio(card)}
+            disabled={isInPortfolio}
+            style={{
+              width: '100%', padding: '7px 0',
+              background: isInPortfolio ? 'var(--accent-green-dim)' : 'none',
+              border: `1px solid ${isInPortfolio ? 'var(--accent-green)' : 'var(--border-2)'}`,
+              borderRadius: 'var(--radius)',
+              color: isInPortfolio ? 'var(--accent-green-bright)' : 'var(--text-muted)',
+              fontSize: 11, fontFamily: "'DM Mono', monospace",
+              cursor: isInPortfolio ? 'default' : 'pointer',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => { if (!isInPortfolio) { e.currentTarget.style.borderColor = 'var(--accent-green)'; e.currentTarget.style.color = 'var(--accent-green-bright)'; } }}
+            onMouseLeave={(e) => { if (!isInPortfolio) { e.currentTarget.style.borderColor = 'var(--border-2)'; e.currentTarget.style.color = 'var(--text-muted)'; } }}
+          >
+            {isInPortfolio ? 'In Portfolio ✓' : '+ Add to Portfolio'}
+          </button>
         </div>
       )}
     </div>

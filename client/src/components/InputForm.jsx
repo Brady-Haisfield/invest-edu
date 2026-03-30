@@ -38,12 +38,18 @@ const PURPOSE_OPT         = ['Retirement', 'Building general wealth', 'A specifi
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function getAgeHint(raw) {
-  const n = Number(raw);
-  if (!raw || !Number.isFinite(n) || n <= 0 || n > 120) return null;
-  if (n < 40) return 'You have time on your side. Growth-oriented options may suit you well.';
-  if (n < 55) return 'A balance of growth and stability is common at this stage.';
-  if (n < 65) return 'Approaching retirement. Capital preservation becomes more important.';
+function calcAgeFromDOB(month, year) {
+  if (!year) return null;
+  const now = new Date();
+  const age = now.getFullYear() - Number(year) + (Number(month) > now.getMonth() ? -1 : 0);
+  return age > 0 && age < 130 ? age : null;
+}
+
+function getAgeHint(age) {
+  if (age == null) return null;
+  if (age < 40) return 'You have time on your side. Growth-oriented options may suit you well.';
+  if (age < 55) return 'A balance of growth and stability is common at this stage.';
+  if (age < 65) return 'Approaching retirement. Capital preservation becomes more important.';
   return 'Income and stability are typically the priority at this stage.';
 }
 
@@ -53,12 +59,12 @@ function formatAmountPreview(raw) {
   return `$${n.toLocaleString()} to invest`;
 }
 
-function calcCompleteness({ riskProfile, goalMode, holdPeriod, age, amount, annualIncome, employmentStatus, emergencyFund, existingInvestments, familySituation, homeownership, upcomingExpenses, priorities, dropReaction, themes, involvement, investmentPurpose, sectors }) {
+function calcCompleteness({ riskProfile, goalMode, holdPeriod, birthYear, amount, annualIncome, employmentStatus, emergencyFund, existingInvestments, familySituation, homeownership, upcomingExpenses, priorities, dropReaction, themes, involvement, investmentPurpose, sectors }) {
   const checks = [
     !!riskProfile,
     !!goalMode,
     !!holdPeriod,
-    !!(age && Number(age) > 0),
+    !!(birthYear && Number(birthYear) > 0),
     !!(amount && Number(amount) > 0),
     !!annualIncome,
     !!employmentStatus,
@@ -166,7 +172,8 @@ function SelectDropdown({ value, onChange, options, placeholder }) {
 export default function InputForm({ onSubmit, disabled }) {
   // Section 1 — always visible
   const [riskProfile, setRiskProfile] = useState('medium');
-  const [age, setAge]                 = useState('');
+  const [birthMonth, setBirthMonth]   = useState('');
+  const [birthYear,  setBirthYear]    = useState('');
   const [goalMode, setGoalMode]       = useState('growing-wealth');
 
   // Section 2 — Financial Picture
@@ -213,10 +220,9 @@ export default function InputForm({ onSubmit, disabled }) {
       return;
     }
     setAmtError('');
-    const ageNum = Number(age);
     onSubmit({
       riskProfile, goalMode,
-      age: Number.isFinite(ageNum) && ageNum > 0 ? ageNum : null,
+      dateOfBirth: (birthMonth && birthYear) ? { month: Number(birthMonth), year: Number(birthYear) } : null,
       annualIncome, employmentStatus, emergencyFund, existingInvestments,
       familySituation, homeownership, upcomingExpenses,
       priorities, dropReaction, themes, involvement,
@@ -225,14 +231,14 @@ export default function InputForm({ onSubmit, disabled }) {
   }
 
   const { pct, label } = calcCompleteness({
-    riskProfile, goalMode, holdPeriod, age, amount, annualIncome, employmentStatus,
+    riskProfile, goalMode, holdPeriod, birthYear, amount, annualIncome, employmentStatus,
     emergencyFund, existingInvestments, familySituation, homeownership, upcomingExpenses,
     priorities, dropReaction, themes, involvement, investmentPurpose, sectors,
   });
 
   const amountPreview = formatAmountPreview(amount);
-  const ageHint       = getAgeHint(age);
-  const coreComplete  = age && Number(age) > 0 && amount && Number(amount) > 0;
+  const ageHint       = getAgeHint(calcAgeFromDOB(birthMonth, birthYear));
+  const coreComplete  = birthYear && Number(birthYear) > 0 && amount && Number(amount) > 0;
 
   return (
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -267,17 +273,31 @@ export default function InputForm({ onSubmit, disabled }) {
       </div>
 
       <div>
-        <FieldLabel>Your Age</FieldLabel>
-        <input
-          type="text" inputMode="numeric" pattern="[0-9]*"
-          value={age}
-          onChange={(e) => setAge(e.target.value.replace(/\D/g, ''))}
-          placeholder="e.g. 42"
-          className="ticker-input"
-          style={{ backgroundColor: 'var(--bg-input)' }}
-          onFocus={(e) => { e.target.style.borderColor = 'var(--border-focus)'; }}
-          onBlur={(e)  => { e.target.style.borderColor = 'var(--border)'; }}
-        />
+        <FieldLabel>Date of Birth</FieldLabel>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <select
+            value={birthMonth}
+            onChange={(e) => setBirthMonth(e.target.value)}
+            className="ticker-input"
+            style={{ backgroundColor: 'var(--bg-input)', flex: 1 }}
+          >
+            <option value="">Month</option>
+            {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => (
+              <option key={i + 1} value={i + 1}>{m}</option>
+            ))}
+          </select>
+          <select
+            value={birthYear}
+            onChange={(e) => setBirthYear(e.target.value)}
+            className="ticker-input"
+            style={{ backgroundColor: 'var(--bg-input)', flex: 1 }}
+          >
+            <option value="">Year</option>
+            {Array.from({ length: new Date().getFullYear() - 1919 - 13 }, (_, i) => new Date().getFullYear() - 13 - i).map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </div>
         {ageHint && (
           <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5, fontStyle: 'italic' }}>{ageHint}</p>
         )}

@@ -319,7 +319,7 @@ function RedFlagsPanel({ inputs }) {
   );
 }
 
-export default function StockGrid({ cards, inputs, advisorNarrative, treasuryRates, user, token, onSignInClick, planIsSaved, onSavePlanSuccess }) {
+export default function StockGrid({ cards, inputs, advisorNarrative, treasuryRates, user, token, onSignInClick, planIsSaved, onSavePlanSuccess, portfolioTickers, onAddToPortfolio }) {
   console.log('[StockGrid] treasuryRates received:', treasuryRates);
   const [savingPlan, setSavingPlan]     = useState(false);
   const [planSaveError, setPlanSaveError] = useState(false);
@@ -408,10 +408,36 @@ export default function StockGrid({ cards, inputs, advisorNarrative, treasuryRat
         </div>
       </div>
 
+      {/* Portfolio overlap indicator */}
+      {user && portfolioTickers && portfolioTickers.size > 0 && (() => {
+        const overlap = cards.filter((c) => portfolioTickers.has(c.ticker)).length;
+        if (overlap === 0) return null;
+        return (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: 'var(--space-2) var(--space-3)',
+            background: 'var(--accent-green-dim)', border: '1px solid var(--accent-green)',
+            borderRadius: 'var(--radius)', marginBottom: 'var(--space-2)',
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green-bright)', flexShrink: 0 }} />
+            <span style={{ fontSize: 11, color: 'var(--accent-green-bright)', fontFamily: "'DM Mono', monospace" }}>
+              {overlap} of {cards.length} suggestion{overlap !== 1 ? 's are' : ' is'} already in your portfolio
+            </span>
+          </div>
+        );
+      })()}
+
       {/* Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 'var(--space-4)' }}>
         {cards.map((card) => (
-          <StockCard key={card.ticker} card={card} equalProjection={calcEqualProjection(card, inputs, treasuryRates)} />
+          <StockCard
+            key={card.ticker}
+            card={card}
+            equalProjection={calcEqualProjection(card, inputs, treasuryRates)}
+            user={user}
+            isInPortfolio={portfolioTickers ? portfolioTickers.has(card.ticker) : false}
+            onAddToPortfolio={onAddToPortfolio}
+          />
         ))}
       </div>
 

@@ -3,7 +3,7 @@ import { useState } from 'react';
 const TOTAL_STEPS = 9;
 
 const STEP_META = [
-  { question: 'How old are you?',              subtitle: 'This helps us understand your time horizon and risk capacity.' },
+  { question: 'When were you born?',            subtitle: 'Month and year is enough — we use this to understand your time horizon and risk capacity.' },
   { question: "What's your main goal right now?", subtitle: "We'll build your suggestions around this." },
   { question: 'How much are you looking to invest?', subtitle: "We'll use this to calculate projections and match position sizes." },
   { question: 'How comfortable are you with risk?', subtitle: "There's no right answer — honest beats optimistic here." },
@@ -63,7 +63,8 @@ export default function OnboardingFlow({ onSubmit, disabled, onShowFullForm, def
   const [error, setError]     = useState('');
 
   // Answers — initialized from defaultValues when provided
-  const [age, setAge]                     = useState(dv.age != null ? String(dv.age) : '');
+  const [birthMonth, setBirthMonth] = useState(dv.dateOfBirth?.month ? String(dv.dateOfBirth.month) : '');
+  const [birthYear,  setBirthYear]  = useState(dv.dateOfBirth?.year  ? String(dv.dateOfBirth.year)  : '');
   const [goalMode, setGoalMode]           = useState(dv.goalMode ?? 'growing-wealth');
   const [amount, setAmount]               = useState(dv.amount != null ? String(dv.amount) : '');
   const [riskProfile, setRiskProfile]     = useState(dv.riskProfile ?? 'medium');
@@ -84,9 +85,10 @@ export default function OnboardingFlow({ onSubmit, disabled, onShowFullForm, def
 
   function validateStep() {
     if (step === 0) {
-      const n = Number(age);
-      if (!age || !Number.isFinite(n) || n <= 0 || n > 120) {
-        setError('Please enter a valid age.');
+      const y = Number(birthYear);
+      const now = new Date();
+      if (!birthMonth || !birthYear || !Number.isFinite(y) || y < 1920 || y > now.getFullYear() - 13) {
+        setError('Please select a valid birth month and year.');
         return false;
       }
     }
@@ -106,7 +108,7 @@ export default function OnboardingFlow({ onSubmit, disabled, onShowFullForm, def
       const cleanSectors = sectors.filter((s) => s !== 'No preference');
       const holdPeriod = (goalMode === 'approaching-retirement' || goalMode === 'already-retired') ? 'medium' : 'long';
       onSubmit({
-        age: Number(age) || null,
+        dateOfBirth: { month: Number(birthMonth), year: Number(birthYear) },
         goalMode,
         amount: Number(amount),
         riskProfile,
@@ -150,16 +152,31 @@ export default function OnboardingFlow({ onSubmit, disabled, onShowFullForm, def
       case 0:
         return (
           <>
-            <input
-              type="text" inputMode="numeric" pattern="[0-9]*"
-              value={age}
-              onChange={(e) => { setAge(e.target.value.replace(/\D/g, '')); setError(''); }}
-              placeholder="e.g. 42"
-              className="ticker-input"
-              style={{ backgroundColor: 'var(--bg-input)', fontSize: 16 }}
-              onKeyDown={(e) => e.key === 'Enter' && handleContinue()}
-              autoFocus
-            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <select
+                value={birthMonth}
+                onChange={(e) => { setBirthMonth(e.target.value); setError(''); }}
+                className="ticker-input"
+                style={{ backgroundColor: 'var(--bg-input)', fontSize: 14, flex: 1 }}
+                autoFocus
+              >
+                <option value="">Month</option>
+                {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => (
+                  <option key={i + 1} value={i + 1}>{m}</option>
+                ))}
+              </select>
+              <select
+                value={birthYear}
+                onChange={(e) => { setBirthYear(e.target.value); setError(''); }}
+                className="ticker-input"
+                style={{ backgroundColor: 'var(--bg-input)', fontSize: 14, flex: 1 }}
+              >
+                <option value="">Year</option>
+                {Array.from({ length: new Date().getFullYear() - 1919 - 13 }, (_, i) => new Date().getFullYear() - 13 - i).map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
             {error && <p style={{ color: 'var(--accent-red)', fontSize: 11, marginTop: 6 }}>{error}</p>}
           </>
         );

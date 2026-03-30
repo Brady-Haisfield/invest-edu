@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { fetchSuggestions, fetchMarketRates } from './api/suggestions.js';
 import { fetchForecast } from './api/forecast.js';
 import { getMe, saveProfile } from './services/auth.js';
+import PortfolioPage from './components/PortfolioPage.jsx';
+import AddInvestmentModal from './components/AddInvestmentModal.jsx';
 import DisclaimerBanner from './components/DisclaimerBanner.jsx';
 import Nav from './components/Nav.jsx';
 import InputForm from './components/InputForm.jsx';
@@ -18,6 +20,24 @@ import SavedPlansModal from './components/SavedPlansModal.jsx';
 import LandingPage from './components/LandingPage.jsx';
 import DashboardPanel from './components/DashboardPanel.jsx';
 import EditProfileModal from './components/EditProfileModal.jsx';
+
+// Compute age from { month (1-12), year } at call time so it's always current.
+function calcAgeFromDOB(dob) {
+  if (!dob?.year) return null;
+  const now = new Date();
+  const age = now.getFullYear() - Number(dob.year) + (Number(dob.month) > now.getMonth() ? -1 : 0);
+  return age > 0 && age < 130 ? age : null;
+}
+
+// Enrich a stored profile with a freshly-calculated age from dateOfBirth.
+// Falls back to the stored age for old profiles that predate DOB storage.
+function withFreshAge(inputs) {
+  if (!inputs) return inputs;
+  if (inputs.dateOfBirth?.year) {
+    return { ...inputs, age: calcAgeFromDOB(inputs.dateOfBirth) };
+  }
+  return inputs;
+}
 
 const INITIAL_REFINE = {
   numChildren:            '',
@@ -44,6 +64,8 @@ const INITIAL_REFINE = {
 function buildMergedInputs(profileInputs, refineInputs) {
   if (!profileInputs) return null;
   const r = refineInputs ?? INITIAL_REFINE;
+  // Recalculate age from DOB on every merge so it's always current-year-accurate
+  const freshAge = profileInputs.dateOfBirth?.year ? calcAgeFromDOB(profileInputs.dateOfBirth) : (profileInputs.age ?? null);
   const takeHome  = Number(r.monthlyTakeHome) || 0;
   const pension   = (r.hasPension === 'yes') ? (Number(r.pensionAmount) || 0) : 0;
   const ss        = Number(r.expectedSocialSecurity) || 0;
@@ -51,28 +73,36 @@ function buildMergedInputs(profileInputs, refineInputs) {
   const debt      = Number(r.monthlyDebt) || 0;
   const totalIncome = takeHome + pension + ss;
   const showSurplus = r.monthlyTakeHome !== '' || r.monthlyExpenses !== '' || (r.hasPension === 'yes' && r.pensionAmount !== '') || r.expectedSocialSecurity !== '';
+  // For each refine field: use the refine value when explicitly set, otherwise keep the
+  // profileInputs value. This prevents unset refine fields from overriding profile data
+  // with null/zero when the user hasn't touched that field.
+  const p = profileInputs;
+  const num  = (refineVal, profileKey) => refineVal !== '' ? Number(refineVal) : (p[profileKey] ?? null);
+  const pill = (refineVal, profileKey) => refineVal || p[profileKey] || null;
+
   return {
-    ...profileInputs,
-    numChildren:             r.numChildren !== '' ? Number(r.numChildren) : null,
-    childrenAges:            r.childrenAges || null,
-    monthlyDependentCosts:   r.monthlyDependentCosts !== '' ? Number(r.monthlyDependentCosts) : null,
-    supportingAgingParents:  r.supportingAgingParents || null,
-    totalSavings:            r.totalSavings !== '' ? Number(r.totalSavings) : null,
-    liquidityFloor:          r.liquidityFloor !== '' ? Number(r.liquidityFloor) : null,
-    monthlyTakeHome:         r.monthlyTakeHome !== '' ? Number(r.monthlyTakeHome) : null,
-    monthlyExpenses:         r.monthlyExpenses !== '' ? Number(r.monthlyExpenses) : null,
-    monthlySurplus:          showSurplus ? (totalIncome - expenses - debt) : null,
-    hasPension:              r.hasPension || null,
-    pensionAmount:           r.pensionAmount !== '' ? Number(r.pensionAmount) : null,
-    expectedSocialSecurity:  r.expectedSocialSecurity !== '' ? Number(r.expectedSocialSecurity) : null,
-    targetRetirementAge:     r.targetRetirementAge !== '' ? Number(r.targetRetirementAge) : null,
-    monthlyDebt:             r.monthlyDebt !== '' ? Number(r.monthlyDebt) : null,
-    homeownership:           r.homeownership || profileInputs?.homeownership || null,
-    investmentExperience:    r.investmentExperience || null,
-    allocStocks:             r.allocStocks !== '' ? Number(r.allocStocks) : null,
-    allocBonds:              r.allocBonds  !== '' ? Number(r.allocBonds)  : null,
-    allocCash:               r.allocCash   !== '' ? Number(r.allocCash)   : null,
-    allocRealEstate:         r.allocRealEstate !== '' ? Number(r.allocRealEstate) : null,
+    ...p,
+    age: freshAge,
+    numChildren:             num(r.numChildren,            'numChildren'),
+    childrenAges:            r.childrenAges || p.childrenAges || null,
+    monthlyDependentCosts:   num(r.monthlyDependentCosts,  'monthlyDependentCosts'),
+    supportingAgingParents:  pill(r.supportingAgingParents, 'supportingAgingParents'),
+    totalSavings:            num(r.totalSavings,            'totalSavings'),
+    liquidityFloor:          num(r.liquidityFloor,          'liquidityFloor'),
+    monthlyTakeHome:         num(r.monthlyTakeHome,         'monthlyTakeHome'),
+    monthlyExpenses:         num(r.monthlyExpenses,         'monthlyExpenses'),
+    monthlySurplus:          showSurplus ? (totalIncome - expenses - debt) : (p.monthlySurplus ?? null),
+    hasPension:              pill(r.hasPension,             'hasPension'),
+    pensionAmount:           num(r.pensionAmount,           'pensionAmount'),
+    expectedSocialSecurity:  num(r.expectedSocialSecurity, 'expectedSocialSecurity'),
+    targetRetirementAge:     num(r.targetRetirementAge,    'targetRetirementAge'),
+    monthlyDebt:             num(r.monthlyDebt,            'monthlyDebt'),
+    homeownership:           pill(r.homeownership,          'homeownership'),
+    investmentExperience:    pill(r.investmentExperience,   'investmentExperience'),
+    allocStocks:             num(r.allocStocks,             'allocStocks'),
+    allocBonds:              num(r.allocBonds,              'allocBonds'),
+    allocCash:               num(r.allocCash,               'allocCash'),
+    allocRealEstate:         num(r.allocRealEstate,         'allocRealEstate'),
   };
 }
 
@@ -104,6 +134,11 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [planIsSaved, setPlanIsSaved] = useState(false);
+
+  // Portfolio state
+  const [portfolioTickers, setPortfolioTickers] = useState(new Set());
+  const [showAddPortfolioModal, setShowAddPortfolioModal] = useState(false);
+  const [addPortfolioCard, setAddPortfolioCard]           = useState(null);
 
   // Forecast page state
   const [forecast, setForecast] = useState(null);
@@ -164,7 +199,7 @@ export default function App() {
           }));
           if (meData.savedProfile) {
             const { inputs, refineInputs: savedRefine, lastCards, lastAdvisorNarrative } = meData.savedProfile;
-            setProfileInputs(inputs);
+            setProfileInputs(withFreshAge(inputs));
             setHasProfile(true);
             if (savedRefine) setRefineInputs(savedRefine);
             if (lastCards) {
@@ -214,7 +249,7 @@ export default function App() {
       const meData = await getMe(authToken);
       if (meData.savedProfile) {
         const { inputs, refineInputs: savedRefine, lastCards, lastAdvisorNarrative } = meData.savedProfile;
-        setProfileInputs(inputs);
+        setProfileInputs(withFreshAge(inputs));
         setHasProfile(true);
         if (savedRefine) setRefineInputs(savedRefine);
         if (lastCards) {
@@ -256,6 +291,18 @@ export default function App() {
     setHasProfile(false);
     setProfileInputs(null);
     setRefineInputs(INITIAL_REFINE);
+    setPortfolioTickers(new Set());
+  }
+
+  function handleAddToPortfolio(card) {
+    setAddPortfolioCard(card);
+    setShowAddPortfolioModal(true);
+  }
+
+  function handleAddPortfolioSuccess(ticker) {
+    setShowAddPortfolioModal(false);
+    setAddPortfolioCard(null);
+    setPortfolioTickers((prev) => new Set([...prev, ticker]));
   }
 
   function handleLoadPlan(plan) {
@@ -291,7 +338,7 @@ export default function App() {
 
   // First-time setup: called when new user completes onboarding
   async function handleFirstSetup(formData) {
-    setProfileInputs(formData);
+    setProfileInputs(withFreshAge(formData));
     setHasProfile(true);
     const result = await handleSubmitCore(formData);
     const tok = tokenRef.current;
@@ -312,7 +359,7 @@ export default function App() {
 
   // Edit profile save
   async function handleEditProfileSave(formData) {
-    setProfileInputs(formData);
+    setProfileInputs(withFreshAge(formData));
     setShowEditProfile(false);
     const ri  = refineRef.current;
     const tok = tokenRef.current;
@@ -441,6 +488,16 @@ export default function App() {
       {showSavedPlans && token && (
         <SavedPlansModal token={token} onClose={() => setShowSavedPlans(false)} onLoad={handleLoadPlan} />
       )}
+      {showAddPortfolioModal && token && (
+        <AddInvestmentModal
+          token={token}
+          initialTicker={addPortfolioCard?.ticker}
+          initialName={addPortfolioCard?.name}
+          initialSecurityType={addPortfolioCard?.type}
+          onSuccess={handleAddPortfolioSuccess}
+          onClose={() => { setShowAddPortfolioModal(false); setAddPortfolioCard(null); }}
+        />
+      )}
       {showEditProfile && profileInputs && (
         <EditProfileModal
           profileInputs={profileInputs}
@@ -539,6 +596,8 @@ export default function App() {
                   onSignInClick={() => setShowAuthModal(true)}
                   planIsSaved={planIsSaved}
                   onSavePlanSuccess={() => setPlanIsSaved(true)}
+                  portfolioTickers={portfolioTickers}
+                  onAddToPortfolio={handleAddToPortfolio}
                 />
               )}
               {!loading && !error && !cards && (
@@ -625,6 +684,15 @@ export default function App() {
               )}
             </div>
           </div>
+        )}
+
+        {/* Portfolio Page */}
+        {currentPage === 'portfolio' && token && (
+          <PortfolioPage
+            token={token}
+            suggestionCards={cards}
+            onPortfolioChange={setPortfolioTickers}
+          />
         )}
 
       </div>

@@ -37,6 +37,22 @@ db.exec(`
     advisor_narrative TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS portfolio_holdings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES users(id),
+    ticker TEXT NOT NULL,
+    name TEXT,
+    security_type TEXT,
+    amount_invested REAL NOT NULL,
+    shares REAL,
+    purchase_price REAL,
+    purchase_month INTEGER,
+    purchase_year INTEGER,
+    account_type TEXT,
+    added_from TEXT DEFAULT 'manual',
+    added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // Migrate existing profiles table — add any columns that were added after initial creation

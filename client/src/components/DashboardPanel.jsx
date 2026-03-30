@@ -196,19 +196,8 @@ export default function DashboardPanel({
         borderRadius: 'var(--radius-lg)',
         padding: 'var(--space-4)',
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-3)' }}>
+        <div style={{ marginBottom: 'var(--space-3)' }}>
           <span className="section-label">Your Profile</span>
-          <button
-            type="button"
-            onClick={onEditProfile}
-            style={{
-              background: 'none', border: 'none', padding: '2px 0',
-              color: 'var(--accent-green-bright)', fontSize: 11,
-              fontFamily: "'DM Mono', monospace", cursor: 'pointer',
-            }}
-          >
-            Edit →
-          </button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>

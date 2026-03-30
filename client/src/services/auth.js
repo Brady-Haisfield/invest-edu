@@ -62,3 +62,24 @@ export async function deletePlan(token, planId) {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
+
+export async function addHolding(token, holdingData) {
+  return authFetch('/portfolio/add', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(holdingData),
+  });
+}
+
+export async function getHoldings(token) {
+  return authFetch('/portfolio/holdings', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function deleteHolding(token, holdingId) {
+  return authFetch(`/portfolio/holdings/${holdingId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
