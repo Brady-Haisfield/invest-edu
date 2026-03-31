@@ -88,6 +88,13 @@ export default function AllocationBuilder({ cards, inputs, treasuryRates }) {
   const allocated      = rows.reduce((s, r) => s + r.amt, 0);
   const unallocated    = total - allocated;
 
+  // For profile range section (computed once at component level)
+  const profValidRows  = rows.filter(r => r.amt > 0 && r.result?.baseRate != null);
+  const profAllocTotal = profValidRows.reduce((s, r) => s + r.amt, 0);
+  const profAvgReturn  = profAllocTotal > 0
+    ? Math.max(0, profValidRows.reduce((s, r) => s + r.result.baseRate * r.amt, 0) / profAllocTotal)
+    : null;
+
   return (
     <div style={{
       padding: 'var(--space-5)',
@@ -333,6 +340,27 @@ export default function AllocationBuilder({ cards, inputs, treasuryRates }) {
         <p style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.5, margin: 0 }}>
           Return methodology: Individual stocks use a weighted blend of Wall Street analyst consensus price targets (40%), Bogle fundamental model using forward EPS estimates (35%), and CAPM risk-adjusted market return (25%), adjusted for recent news sentiment. Pessimistic/optimistic scenarios use the actual analyst high/low price target range when available. ETFs use CAPM with actual beta and live Vanguard VCMM-calibrated sector rates. Bond ETFs use live Federal Reserve Treasury yields. REITs use dividend yield weighted with revenue growth. S&P 500 comparison uses live Shiller CAPE ratio from the Federal Reserve (updated daily). All data updated on every search. Not a guarantee of future returns.
         </p>
+
+        {(() => {
+          const profileRanges = {
+            'high-risk-growth':      { low: 8,  high: 18 },
+            'high-risk-retirement':  { low: 7,  high: 15 },
+            'medium-risk-growth':    { low: 6,  high: 12 },
+            'medium-risk-retirement':{ low: 5,  high: 10 },
+            'low-risk-growth':       { low: 4,  high: 8  },
+            'low-risk-retirement':   { low: 3,  high: 7  },
+          };
+          const riskKey = inputs?.riskProfile ?? 'medium';
+          const goalKey = inputs?.goalMode === 'growing-wealth' ? 'growth' : 'retirement';
+          const range = profileRanges[`${riskKey}-risk-${goalKey}`];
+          if (!range) return null;
+          return (
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5, marginTop: 'var(--space-3)', marginBottom: 0 }}>
+              <span className="section-label" style={{ display: 'block', marginBottom: 4 }}>Expected range for your profile</span>
+              Based on your profile, a typical portfolio like yours has historically returned between {range.low}% and {range.high}% per year over long periods.{profAvgReturn !== null ? ` Your current allocation projects ~${(profAvgReturn * 100).toFixed(1)}%/yr.` : ''}
+            </p>
+          );
+        })()}
       </div>
     </div>
   );

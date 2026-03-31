@@ -2,8 +2,13 @@ import { useState } from 'react';
 
 const TOTAL_STEPS = 9;
 
+const MONTHS = [
+  'January','February','March','April','May','June',
+  'July','August','September','October','November','December',
+];
+
 const STEP_META = [
-  { question: 'When were you born?',            subtitle: 'Month and year is enough — we use this to understand your time horizon and risk capacity.' },
+  { question: 'When were you born?', subtitle: 'Day, month, and year — we use this to calculate your exact age and time horizon.' },
   { question: "What's your main goal right now?", subtitle: "We'll build your suggestions around this." },
   { question: 'How much are you looking to invest?', subtitle: "We'll use this to calculate projections and match position sizes." },
   { question: 'How comfortable are you with risk?', subtitle: "There's no right answer — honest beats optimistic here." },
@@ -63,6 +68,7 @@ export default function OnboardingFlow({ onSubmit, disabled, onShowFullForm, def
   const [error, setError]     = useState('');
 
   // Answers — initialized from defaultValues when provided
+  const [birthDay,   setBirthDay]   = useState(dv.dateOfBirth?.day   ? String(dv.dateOfBirth.day)   : '');
   const [birthMonth, setBirthMonth] = useState(dv.dateOfBirth?.month ? String(dv.dateOfBirth.month) : '');
   const [birthYear,  setBirthYear]  = useState(dv.dateOfBirth?.year  ? String(dv.dateOfBirth.year)  : '');
   const [goalMode, setGoalMode]           = useState(dv.goalMode ?? 'growing-wealth');
@@ -86,9 +92,9 @@ export default function OnboardingFlow({ onSubmit, disabled, onShowFullForm, def
   function validateStep() {
     if (step === 0) {
       const y = Number(birthYear);
-      const now = new Date();
-      if (!birthMonth || !birthYear || !Number.isFinite(y) || y < 1920 || y > now.getFullYear() - 13) {
-        setError('Please select a valid birth month and year.');
+      const d = Number(birthDay);
+      if (!birthDay || !birthMonth || !birthYear || !Number.isFinite(d) || d < 1 || d > 31 || !Number.isFinite(y) || y < 1924 || y > 2010) {
+        setError('Please select a valid day, month, and year (1924–2010).');
         return false;
       }
     }
@@ -108,7 +114,7 @@ export default function OnboardingFlow({ onSubmit, disabled, onShowFullForm, def
       const cleanSectors = sectors.filter((s) => s !== 'No preference');
       const holdPeriod = (goalMode === 'approaching-retirement' || goalMode === 'already-retired') ? 'medium' : 'long';
       onSubmit({
-        dateOfBirth: { month: Number(birthMonth), year: Number(birthYear) },
+        dateOfBirth: { day: Number(birthDay), month: Number(birthMonth), year: Number(birthYear) },
         goalMode,
         amount: Number(amount),
         riskProfile,
@@ -154,14 +160,25 @@ export default function OnboardingFlow({ onSubmit, disabled, onShowFullForm, def
           <>
             <div style={{ display: 'flex', gap: 8 }}>
               <select
+                value={birthDay}
+                onChange={(e) => { setBirthDay(e.target.value); setError(''); }}
+                className="ticker-input"
+                style={{ backgroundColor: 'var(--bg-input)', fontSize: 14, width: 80, flexShrink: 0 }}
+                autoFocus
+              >
+                <option value="">Day</option>
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+              <select
                 value={birthMonth}
                 onChange={(e) => { setBirthMonth(e.target.value); setError(''); }}
                 className="ticker-input"
                 style={{ backgroundColor: 'var(--bg-input)', fontSize: 14, flex: 1 }}
-                autoFocus
               >
                 <option value="">Month</option>
-                {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => (
+                {MONTHS.map((m, i) => (
                   <option key={i + 1} value={i + 1}>{m}</option>
                 ))}
               </select>
@@ -169,10 +186,10 @@ export default function OnboardingFlow({ onSubmit, disabled, onShowFullForm, def
                 value={birthYear}
                 onChange={(e) => { setBirthYear(e.target.value); setError(''); }}
                 className="ticker-input"
-                style={{ backgroundColor: 'var(--bg-input)', fontSize: 14, flex: 1 }}
+                style={{ backgroundColor: 'var(--bg-input)', fontSize: 14, width: 90, flexShrink: 0 }}
               >
                 <option value="">Year</option>
-                {Array.from({ length: new Date().getFullYear() - 1919 - 13 }, (_, i) => new Date().getFullYear() - 13 - i).map((y) => (
+                {Array.from({ length: 2010 - 1924 + 1 }, (_, i) => 2010 - i).map((y) => (
                   <option key={y} value={y}>{y}</option>
                 ))}
               </select>

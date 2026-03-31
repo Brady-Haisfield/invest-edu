@@ -319,7 +319,14 @@ function RedFlagsPanel({ inputs }) {
   );
 }
 
-export default function StockGrid({ cards, inputs, advisorNarrative, treasuryRates, user, token, onSignInClick, planIsSaved, onSavePlanSuccess, portfolioTickers, onAddToPortfolio }) {
+function formatPlanDate(iso) {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch { return null; }
+}
+
+export default function StockGrid({ cards, inputs, advisorNarrative, treasuryRates, user, token, onSignInClick, planIsSaved, onSavePlanSuccess, portfolioTickers, onAddToPortfolio, planUpdatedAt, onRefreshPlan }) {
   console.log('[StockGrid] treasuryRates received:', treasuryRates);
   const [savingPlan, setSavingPlan]     = useState(false);
   const [planSaveError, setPlanSaveError] = useState(false);
@@ -355,15 +362,39 @@ export default function StockGrid({ cards, inputs, advisorNarrative, treasuryRat
       {/* Wealth snapshot */}
       <WealthSnapshot inputs={inputs} />
 
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-4)', marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
-        <p className="section-label" style={{ margin: 0 }}>
-          {cards.length} educational suggestion{cards.length !== 1 ? 's' : ''}
-        </p>
-        {profileSummary && (
-          <p className="section-label" style={{ margin: 0, color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
-            {profileSummary}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', marginBottom: 'var(--space-4)', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+          <p className="section-label" style={{ margin: 0 }}>
+            {cards.length} educational suggestion{cards.length !== 1 ? 's' : ''}
           </p>
-        )}
+          {profileSummary && (
+            <p className="section-label" style={{ margin: 0, color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+              {profileSummary}
+            </p>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexShrink: 0 }}>
+          {planUpdatedAt && (
+            <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace" }}>
+              Last updated: {formatPlanDate(planUpdatedAt)}
+            </span>
+          )}
+          {onRefreshPlan && (
+            <button
+              type="button"
+              onClick={onRefreshPlan}
+              style={{
+                padding: '5px 12px', borderRadius: 'var(--radius)',
+                border: '1px solid var(--border-2)', background: 'none',
+                color: 'var(--text-secondary)', fontSize: 11,
+                fontFamily: "'DM Mono', monospace", cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Refresh My Plan →
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Allocation framework */}

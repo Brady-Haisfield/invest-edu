@@ -21,11 +21,15 @@ import LandingPage from './components/LandingPage.jsx';
 import DashboardPanel from './components/DashboardPanel.jsx';
 import EditProfileModal from './components/EditProfileModal.jsx';
 
-// Compute age from { month (1-12), year } at call time so it's always current.
+// Compute exact age from { day (optional), month (1-12), year } at call time.
+// Falls back to day=1 for legacy profiles that only stored month+year.
 function calcAgeFromDOB(dob) {
   if (!dob?.year) return null;
-  const now = new Date();
-  const age = now.getFullYear() - Number(dob.year) + (Number(dob.month) > now.getMonth() ? -1 : 0);
+  const today = new Date();
+  const birth = new Date(Number(dob.year), Number(dob.month) - 1, Number(dob.day ?? 1));
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
   return age > 0 && age < 130 ? age : null;
 }
 
@@ -140,6 +144,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [planIsSaved, setPlanIsSaved] = useState(false);
+  const [planUpdatedAt, setPlanUpdatedAt] = useState(null);
 
   // Portfolio state
   const [portfolioTickers, setPortfolioTickers] = useState(new Set());
@@ -169,24 +174,8 @@ export default function App() {
   useEffect(() => { cardsRef.current = cards; },              [cards]);
   useEffect(() => { narrativeRef.current = advisorNarrative; }, [advisorNarrative]);
 
-  // Auto-fetch on initial load when profile exists but no cards were cached in DB
-  useEffect(() => {
-    if (!authChecked || !hasProfile || cards !== null) return;
-    const merged = buildMergedInputs(profileRef.current, refineRef.current);
-    if (!merged) return;
-    setLoading(true);
-    setError(null);
-    setTreasuryRates(null);
-    setLastInputs(merged);
-    fetchSuggestions(merged)
-      .then(({ cards: c, advisorNarrative: n, treasuryRates: r }) => {
-        setCards(c);
-        setAdvisorNarrative(n);
-        setTreasuryRates(r);
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [authChecked, hasProfile]); // eslint-disable-line react-hooks/exhaustive-deps
+  // No auto-fetch on load — saved plan is shown immediately from DB cache.
+  // AI only runs when user explicitly clicks "Refresh My Plan →" or "Update My Plan →".
 
   // Restore auth from localStorage on mount and verify token
   useEffect(() => {
@@ -216,6 +205,7 @@ export default function App() {
               setLastInputs(buildMergedInputs(inputs, savedRefine));
               setAdvisorNarrative(lastAdvisorNarrative ?? null);
               setPlanIsSaved(true);
+              setPlanUpdatedAt(meData.savedProfile.lastUpdatedAt ?? null);
               console.log('[mount] restored', lastCards.length, 'cards from DB ✓');
               // Fetch live market rates independently — not bundled with cached cards
               fetchMarketRates().then((rates) => {
@@ -223,7 +213,7 @@ export default function App() {
                 if (rates) setTreasuryRates(rates);
               });
             } else {
-              console.log('[mount] profile found but no cached cards — will auto-fetch');
+              console.log('[mount] profile found but no cached cards — user can generate plan manually');
             }
           } else {
             console.log('[mount] no saved profile — showing onboarding');
@@ -267,22 +257,12 @@ export default function App() {
           setLastInputs(buildMergedInputs(inputs, savedRefine));
           setAdvisorNarrative(lastAdvisorNarrative ?? null);
           setPlanIsSaved(true);
+          setPlanUpdatedAt(meData.savedProfile.lastUpdatedAt ?? null);
           fetchMarketRates().then((rates) => {
             if (rates) setTreasuryRates(rates);
           });
-        } else {
-          // No cached results — fetch fresh
-          const merged = buildMergedInputs(inputs, savedRefine);
-          const result = await handleSubmitCore(merged);
-          if (result) {
-            saveProfile(authToken, {
-              inputs,
-              refineInputs: savedRefine,
-              lastCards: result.cards,
-              lastAdvisorNarrative: result.advisorNarrative ?? null,
-            }).catch(() => {});
-          }
         }
+        // No cached results — user will see "generate plan" state and click the button
       }
       // No savedProfile → user stays on onboarding (hasProfile = false)
     } catch {
@@ -308,6 +288,7 @@ export default function App() {
     setCards(null);
     setLastInputs(null);
     setAdvisorNarrative(null);
+    setPlanUpdatedAt(null);
     setHasProfile(false);
     setProfileInputs(null);
     setRefineInputs(INITIAL_REFINE);
@@ -333,7 +314,7 @@ export default function App() {
     navigate('home');
   }
 
-  // Core submit — returns { cards, advisorNarrative } or null on error
+  // Core submit — returns { cards, advisorNarrative, updatedAt } or null on error
   async function handleSubmitCore(formData) {
     setPlanIsSaved(false);
     setLoading(true);
@@ -344,10 +325,12 @@ export default function App() {
     setLastInputs(formData);
     try {
       const { cards: newCards, advisorNarrative: narrative, treasuryRates: rates } = await fetchSuggestions(formData);
+      const updatedAt = new Date().toISOString();
       setCards(newCards);
       setAdvisorNarrative(narrative);
       setTreasuryRates(rates);
-      return { cards: newCards, advisorNarrative: narrative };
+      setPlanUpdatedAt(updatedAt);
+      return { cards: newCards, advisorNarrative: narrative, updatedAt };
     } catch (err) {
       setError(err.message);
       return null;
@@ -369,6 +352,7 @@ export default function App() {
         refineInputs: INITIAL_REFINE,
         lastCards: result.cards,
         lastAdvisorNarrative: result.advisorNarrative ?? null,
+        lastUpdatedAt: result.updatedAt,
       })
         .then(() => console.log('[handleFirstSetup] profile saved to DB ✓'))
         .catch((err) => console.error('[handleFirstSetup] profile save failed:', err.message));
@@ -391,6 +375,7 @@ export default function App() {
         refineInputs: ri,
         lastCards: result.cards,
         lastAdvisorNarrative: result.advisorNarrative ?? null,
+        lastUpdatedAt: result.updatedAt,
       }).catch(() => {});
     }
   }
@@ -419,8 +404,28 @@ export default function App() {
           refineInputs: ri,
           lastCards: result.cards,
           lastAdvisorNarrative: result.advisorNarrative ?? null,
+          lastUpdatedAt: result.updatedAt,
         }).catch(() => {});
       }
+    }
+  }
+
+  // Explicit refresh — re-runs AI with current profile, saves result
+  async function handleRefreshPlan() {
+    const prof = profileRef.current;
+    const ri   = refineRef.current;
+    const tok  = tokenRef.current;
+    if (!prof) return;
+    const merged = buildMergedInputs(prof, ri);
+    const result = await handleSubmitCore(merged);
+    if (result && tok) {
+      saveProfile(tok, {
+        inputs: prof,
+        refineInputs: ri,
+        lastCards: result.cards,
+        lastAdvisorNarrative: result.advisorNarrative ?? null,
+        lastUpdatedAt: result.updatedAt,
+      }).catch(() => {});
     }
   }
 
@@ -618,14 +623,30 @@ export default function App() {
                   onSavePlanSuccess={() => setPlanIsSaved(true)}
                   portfolioTickers={portfolioTickers}
                   onAddToPortfolio={handleAddToPortfolio}
+                  planUpdatedAt={planUpdatedAt}
+                  onRefreshPlan={handleRefreshPlan}
                 />
               )}
               {!loading && !error && !cards && (
                 <div style={{ padding: 'var(--space-8)', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
                   <h2 style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontSize: 28, lineHeight: 1.3, fontWeight: 400 }}>
-                    {hasProfile ? 'Updating your results…' : 'Explore options that fit where you are'}
+                    {hasProfile ? 'Generate your plan' : 'Explore options that fit where you are'}
                   </h2>
-                  {!hasProfile && (
+                  {hasProfile ? (
+                    <>
+                      <p style={{ fontSize: 14, color: 'var(--text-muted)', maxWidth: 420, lineHeight: 1.6 }}>
+                        Your profile is set up. Click below to generate your personalised stock suggestions.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleRefreshPlan}
+                        className="btn-primary"
+                        style={{ alignSelf: 'flex-start', padding: '10px 20px' }}
+                      >
+                        Generate My Plan →
+                      </button>
+                    </>
+                  ) : (
                     <>
                       <p style={{ fontSize: 14, color: 'var(--text-muted)', maxWidth: 420, lineHeight: 1.6 }}>
                         Tell us your risk tolerance, how long you want to hold, and what sectors interest you. We'll suggest stocks, ETFs, REITs, and bond funds that fit your profile — and explain why each one makes sense.
