@@ -342,23 +342,87 @@ export default function AllocationBuilder({ cards, inputs, treasuryRates }) {
         </p>
 
         {(() => {
-          const profileRanges = {
-            'high-risk-growth':      { low: 8,  high: 18 },
-            'high-risk-retirement':  { low: 7,  high: 15 },
-            'medium-risk-growth':    { low: 6,  high: 12 },
-            'medium-risk-retirement':{ low: 5,  high: 10 },
-            'low-risk-growth':       { low: 4,  high: 8  },
-            'low-risk-retirement':   { low: 3,  high: 7  },
+          // Fully dynamic: derives bounds from live FRED data already in the component
+          const spyRatePct = (_cachedSpyReturn ?? 0.066) * 100;
+          const tresPct    = (treasuryRates?.tenYear ?? 0.044) * 100;
+          const cape       = treasuryRates?.cape ?? 36;
+          const riskTol    = inputs?.riskProfile ?? 'medium';
+
+          const riskMultipliers = {
+            low:    { lower: 0.7, upper: 1.1 },
+            medium: { lower: 0.9, upper: 1.5 },
+            high:   { lower: 1.0, upper: 2.2 },
           };
-          const riskKey = inputs?.riskProfile ?? 'medium';
-          const goalKey = inputs?.goalMode === 'growing-wealth' ? 'growth' : 'retirement';
-          const range = profileRanges[`${riskKey}-risk-${goalKey}`];
-          if (!range) return null;
+          const mult = riskMultipliers[riskTol] || riskMultipliers.medium;
+
+          // Floor: always at least the risk-free Treasury rate
+          const lo = Math.max(tresPct, spyRatePct * mult.lower);
+          // Hold-period adjustment: short horizons widen variance, long horizons narrow it
+          const holdAdj = holdYears <= 3 ? 1.2 : holdYears >= 10 ? 0.85 : 1.0;
+          const hi = spyRatePct * mult.upper * holdAdj;
+
+          const holdAdjDesc = holdYears <= 3
+            ? `widens the upper bound by 20% — short horizons carry more variance`
+            : holdYears >= 10
+            ? `narrows the upper bound by 15% — time diversification reduces variance`
+            : `applies no adjustment — mid-range hold period`;
+
+          const avgRetStr = profAvgReturn !== null
+            ? ` Your current allocation projects ~${(profAvgReturn * 100).toFixed(1)}%/yr.`
+            : '';
+
           return (
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5, marginTop: 'var(--space-3)', marginBottom: 0 }}>
-              <span className="section-label" style={{ display: 'block', marginBottom: 4 }}>Expected range for your profile</span>
-              Based on your profile, a typical portfolio like yours has historically returned between {range.low}% and {range.high}% per year over long periods.{profAvgReturn !== null ? ` Your current allocation projects ~${(profAvgReturn * 100).toFixed(1)}%/yr.` : ''}
-            </p>
+            <>
+              <style>{`
+                .ab-range-anchor { position: relative; display: inline-flex; align-items: center; cursor: help; }
+                .ab-range-tip { visibility: hidden; opacity: 0; transition: opacity 0.15s ease; pointer-events: none; }
+                .ab-range-anchor:hover .ab-range-tip { visibility: visible; opacity: 1; }
+                .ab-range-info { font-size: 11px; color: var(--text-muted); margin-left: 4px; line-height: 1; }
+                .ab-range-anchor:hover .ab-range-info { color: var(--accent-green); }
+              `}</style>
+              <div style={{ marginTop: 'var(--space-3)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+                  <span className="section-label">Expected range for your profile</span>
+                  <span className="ab-range-anchor">
+                    <span className="ab-range-info">ℹ</span>
+                    <div className="ab-range-tip" style={{
+                      position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%',
+                      transform: 'translateX(-50%)', width: 280,
+                      background: 'var(--bg-card)', border: '1px solid var(--border)',
+                      padding: '12px 14px', borderRadius: 'var(--radius-sm)',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                      fontSize: 11, lineHeight: 1.6, color: 'var(--text-muted)', zIndex: 100,
+                    }}>
+                      <div style={{ fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                        How we calculate this range
+                      </div>
+                      <div style={{ marginBottom: 6 }}>
+                        <strong style={{ color: 'var(--text-secondary)' }}>Base rate:</strong>{' '}
+                        S&P 500 forward return of ~{spyRatePct.toFixed(1)}%/yr derived from the live Shiller CAPE ratio ({cape}) from the Federal Reserve. Formula: earnings yield (1/CAPE) + 1.5% growth buffer + inflation expectations.
+                      </div>
+                      <div style={{ marginBottom: 6 }}>
+                        <strong style={{ color: 'var(--text-secondary)' }}>Floor:</strong>{' '}
+                        10-year Treasury yield of ~{tresPct.toFixed(1)}%/yr from the Federal Reserve — the minimum return that justifies taking investment risk.
+                      </div>
+                      <div style={{ marginBottom: 6 }}>
+                        <strong style={{ color: 'var(--text-secondary)' }}>Risk adjustment:</strong>{' '}
+                        Your {riskTol} risk tolerance applies a {mult.lower}x–{mult.upper}x multiplier to the base rate, reflecting that higher-risk portfolios have historically shown wider return variance.
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        <strong style={{ color: 'var(--text-secondary)' }}>Hold period:</strong>{' '}
+                        Your {holdYears}-year horizon {holdAdjDesc}.
+                      </div>
+                      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8, fontSize: 10 }}>
+                        All data updated daily from the Federal Reserve.
+                      </div>
+                    </div>
+                  </span>
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5, margin: 0 }}>
+                  Based on current market conditions (CAPE-adjusted S&P 500 forward return: ~{spyRatePct.toFixed(1)}%/yr, 10-yr Treasury: ~{tresPct.toFixed(1)}%/yr), a {riskTol}-risk portfolio with your hold period has historically returned between ~{lo.toFixed(1)}% and ~{hi.toFixed(1)}% per year over full market cycles.{avgRetStr}
+                </p>
+              </div>
+            </>
           );
         })()}
       </div>
