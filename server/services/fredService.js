@@ -10,8 +10,10 @@ const SP500_DIV_YIELD = 0.013;
 
 export async function getTreasuryRates() {
   if (cachedRates && Date.now() - cacheTime < CACHE_TTL) {
+    console.log('[FRED] cache hit:', true, 'spyForwardReturn:', (cachedRates.spyForwardReturn * 100).toFixed(2) + '%');
     return cachedRates;
   }
+  console.log('[FRED] cache hit:', false, '— fetching fresh rates');
 
   const FRED_KEY = process.env.FRED_API_KEY;
 

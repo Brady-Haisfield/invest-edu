@@ -3,6 +3,10 @@ import { calcProjection } from '../utils/projections.js';
 
 const HOLD_YEARS = { short: 2, medium: 5, long: 10 };
 
+// Module-level cache so SPY rates survive component remounts / tab switches
+let _cachedSpyReturn = null;
+let _cachedSpyYield  = null;
+
 const TYPE_LABELS = { stock: 'Stock', etf: 'ETF', bond_etf: 'Bond ETF', reit: 'REIT' };
 const TYPE_COLORS = {
   stock:    'var(--text-secondary)',
@@ -254,23 +258,41 @@ export default function AllocationBuilder({ cards, inputs, treasuryRates }) {
 
         {/* SPY comparison */}
         {total > 0 && (() => {
-          const spyRate      = treasuryRates?.spyForwardReturn ?? 0.10;
-          const spyYield     = treasuryRates?.sp500DivYield    ?? 0.013;
+          // Update module-level cache whenever we have fresh data
+          if (treasuryRates?.spyForwardReturn != null) _cachedSpyReturn = treasuryRates.spyForwardReturn;
+          if (treasuryRates?.sp500DivYield    != null) _cachedSpyYield  = treasuryRates.sp500DivYield;
+
+          const spyRate      = _cachedSpyReturn ?? 0.066;
+          const spyYield     = _cachedSpyYield  ?? 0.013;
           const spyPct       = (spyRate * 100).toFixed(1);
           const spyYieldPct  = (spyYield * 100).toFixed(1);
           const spyProjected = Math.round(total * Math.pow(1 + spyRate, holdYears));
           const spyIncome    = Math.round(total * spyYield);
 
           // Weighted average return and yield across all allocated cards
-          const validRows     = rows.filter(r => r.amt > 0 && r.result?.baseRate != null);
-          const allocTotal    = validRows.reduce((s, r) => s + r.amt, 0);
-          const avgReturnPct  = allocTotal > 0
-            ? (validRows.reduce((s, r) => s + r.result.baseRate * r.amt, 0) / allocTotal * 100).toFixed(1)
+          const validRows  = rows.filter(r => r.amt > 0 && r.result?.baseRate != null);
+          const allocTotal = validRows.reduce((s, r) => s + r.amt, 0);
+
+          console.log('[AllocationBuilder] Weighted avg calc:', validRows.map(r => ({ ticker: r.ticker, baseRate: r.result?.baseRate, allocated: r.amt })));
+
+          let avgReturnRaw = allocTotal > 0
+            ? validRows.reduce((s, r) => s + r.result.baseRate * r.amt, 0) / allocTotal
             : null;
-          const yieldRows     = validRows.filter(r => r.dividendYield != null);
-          const avgYieldPct   = allocTotal > 0 && yieldRows.length > 0
-            ? (yieldRows.reduce((s, r) => s + (r.dividendYield / 100) * r.amt, 0) / allocTotal * 100).toFixed(1)
-            : '0.0';
+          if (avgReturnRaw !== null && avgReturnRaw < 0) {
+            console.warn('[AllocationBuilder] avgReturn was negative:', avgReturnRaw, '— flooring to 0');
+            avgReturnRaw = 0;
+          }
+          const avgReturnPct = avgReturnRaw !== null ? (avgReturnRaw * 100).toFixed(1) : null;
+
+          const yieldRows = validRows.filter(r => r.dividendYield != null);
+          let avgYieldRaw = allocTotal > 0 && yieldRows.length > 0
+            ? yieldRows.reduce((s, r) => s + (r.dividendYield / 100) * r.amt, 0) / allocTotal
+            : 0;
+          if (avgYieldRaw < 0) {
+            console.warn('[AllocationBuilder] avgYield was negative:', avgYieldRaw, '— flooring to 0');
+            avgYieldRaw = 0;
+          }
+          const avgYieldPct = (avgYieldRaw * 100).toFixed(1);
           const diff         = totalProjected - spyProjected;
           const diffPct      = Math.abs(diff / spyProjected) * 100;
           let insight;

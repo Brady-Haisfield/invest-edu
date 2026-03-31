@@ -12,6 +12,8 @@ const ETF_EXPENSE_RATIOS = {
   'GLD': 0.40,  'IAU': 0.25,  'PDBC': 0.59,  'VCSH': 0.04,
   'VGSH': 0.04, 'HYG': 0.48,  'JNK': 0.40,   'LQD': 0.14,
   'VCIT': 0.04, 'IGSB': 0.06, 'VCLT': 0.04,
+  'VGT': 0.10,  'ARKK': 0.75, 'XLRE': 0.09,  'VIG': 0.06,
+  'NOBL': 0.35, 'DGRW': 0.28,
 };
 
 // Fallback dividend/distribution yields in % — used only when FMP and Finnhub both return null.
@@ -24,6 +26,7 @@ const ETF_KNOWN_YIELDS = {
   'XLK': 0.71,  'XLV': 1.52,  'JEPI': 7.12, 'JEPQ': 9.21,
   'SCHY': 4.21, 'IWM': 1.41,  'GLD': 0,     'HYG': 7.21,
   'JNK': 7.34,  'LQD': 5.02,  'VCSH': 4.61, 'IGSB': 4.80, 'VCLT': 5.10,
+  'VGT': 0.57,  'ARKK': 0.00, 'VIG': 1.72,  'NOBL': 1.98,  'DGRW': 1.54,
 };
 
 function formatMarketCap(n) {

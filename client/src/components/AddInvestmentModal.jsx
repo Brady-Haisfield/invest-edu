@@ -10,18 +10,24 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-export default function AddInvestmentModal({ token, initialTicker, initialName, initialSecurityType, onSuccess, onClose }) {
+export default function AddInvestmentModal({
+  token,
+  initialTicker, initialName, initialSecurityType,
+  initialAmount, initialPurchasePrice, initialPurchaseMonth, initialPurchaseYear, initialAccountType,
+  editId,
+  onSuccess, onClose,
+}) {
   const now = new Date();
-  const tickerLocked = !!initialTicker;
+  const tickerLocked = !!initialTicker || !!editId;
 
   const [ticker, setTicker]               = useState(initialTicker ?? '');
   const [tickerName, setTickerName]       = useState(initialName ?? '');
   const [securityType, setSecurityType]   = useState(initialSecurityType ?? '');
-  const [amount, setAmount]               = useState('');
-  const [purchasePrice, setPurchasePrice] = useState('');
-  const [purchaseMonth, setPurchaseMonth] = useState(now.getMonth() + 1);
-  const [purchaseYear, setPurchaseYear]   = useState(now.getFullYear());
-  const [accountType, setAccountType]     = useState('');
+  const [amount, setAmount]               = useState(initialAmount != null ? String(initialAmount) : '');
+  const [purchasePrice, setPurchasePrice] = useState(initialPurchasePrice != null ? String(initialPurchasePrice) : '');
+  const [purchaseMonth, setPurchaseMonth] = useState(initialPurchaseMonth ?? now.getMonth() + 1);
+  const [purchaseYear, setPurchaseYear]   = useState(initialPurchaseYear ?? now.getFullYear());
+  const [accountType, setAccountType]     = useState(initialAccountType ?? '');
   const [suggestions, setSuggestions]     = useState([]);
   const [showDropdown, setShowDropdown]   = useState(false);
   const [submitting, setSubmitting]       = useState(false);
@@ -80,7 +86,19 @@ export default function AddInvestmentModal({ token, initialTicker, initialName, 
       ? parseFloat(purchasePrice.replace(/[^0-9.]/g, ''))
       : null;
 
-    const payload = {
+    if (!cleanTicker) { setError('Ticker is required'); return; }
+    if (isNaN(amountParsed) || amountParsed <= 0) { setError('Please enter a valid amount'); return; }
+    if (purchasePriceParsed !== null && (isNaN(purchasePriceParsed) || purchasePriceParsed <= 0)) {
+      setError('Purchase price must be a positive number'); return;
+    }
+
+    const payload = editId ? {
+      amountInvested: amountParsed,
+      purchasePrice: purchasePriceParsed,
+      purchaseMonth: Number(purchaseMonth),
+      purchaseYear: Number(purchaseYear),
+      accountType: accountType || null,
+    } : {
       ticker: cleanTicker,
       name: tickerName || null,
       securityType: securityType || null,
@@ -92,28 +110,22 @@ export default function AddInvestmentModal({ token, initialTicker, initialName, 
       addedFrom: initialTicker ? 'suggestion' : 'manual',
     };
 
-    console.log('Submitting holding:', payload);
-
-    if (!cleanTicker) { setError('Ticker is required'); return; }
-    if (isNaN(amountParsed) || amountParsed <= 0) { setError('Please enter a valid amount'); return; }
-    if (purchasePriceParsed !== null && (isNaN(purchasePriceParsed) || purchasePriceParsed <= 0)) {
-      setError('Purchase price must be a positive number'); return;
-    }
+    console.log(editId ? 'PATCH body:' : 'POST body:', payload);
+    const url = editId ? `/api/auth/portfolio/holdings/${editId}` : '/api/auth/portfolio/add';
+    const method = editId ? 'PATCH' : 'POST';
 
     setSubmitting(true);
     setError('');
     try {
-      const response = await fetch('/api/auth/portfolio/add', {
-        method: 'POST',
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       });
-      console.log('Response status:', response.status);
       const data = await response.json();
-      console.log('Response body:', data);
       if (!response.ok) {
         setError(data.error || `Server error ${response.status}`);
         return;
@@ -147,7 +159,7 @@ export default function AddInvestmentModal({ token, initialTicker, initialName, 
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-5)' }}>
           <h3 style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontSize: 20, fontWeight: 400, color: 'var(--text-primary)' }}>
-            Add to Portfolio
+            {editId ? 'Edit Holding' : 'Add to Portfolio'}
           </h3>
           <button
             type="button" onClick={onClose}
@@ -220,11 +232,14 @@ export default function AddInvestmentModal({ token, initialTicker, initialName, 
             </div>
           </div>
 
-          {/* Purchase price (optional) */}
+          {/* Purchase price */}
           <div>
-            <label className="section-label" style={{ display: 'block', marginBottom: 'var(--space-2)' }}>
-              Purchase Price Per Share <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional — uses today's price if blank)</span>
+            <label className="section-label" style={{ display: 'block', marginBottom: 'var(--space-1)' }}>
+              Purchase Price Per Share
             </label>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 var(--space-2)', lineHeight: 1.4 }}>
+              Enter the price you paid per share for accurate gain/loss tracking. Leave blank to log the investment without return calculations.
+            </p>
             <div style={{ position: 'relative' }}>
               <span style={{
                 position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
@@ -241,6 +256,16 @@ export default function AddInvestmentModal({ token, initialTicker, initialName, 
                 style={{ paddingLeft: 26, backgroundColor: 'var(--bg-input)', fontSize: 14, width: '100%' }}
               />
             </div>
+            {!purchasePrice.trim() && (
+              <div style={{
+                background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)',
+                borderRadius: 'var(--radius)', padding: '7px 10px', marginTop: 'var(--space-2)',
+              }}>
+                <span style={{ color: 'var(--accent-amber)', fontSize: 11, fontFamily: "'DM Mono', monospace" }}>
+                  ⚠ Without a purchase price, we cannot calculate your investment returns.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Purchase date */}
@@ -305,7 +330,7 @@ export default function AddInvestmentModal({ token, initialTicker, initialName, 
               className="btn-primary"
               style={{ flex: 2 }}
             >
-              {submitting ? 'Adding…' : 'Add to Portfolio'}
+              {submitting ? (editId ? 'Saving…' : 'Adding…') : (editId ? 'Save Changes' : 'Add to Portfolio')}
             </button>
           </div>
 

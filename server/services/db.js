@@ -55,9 +55,16 @@ db.exec(`
   );
 `);
 
-// Migrate existing profiles table — add any columns that were added after initial creation
+// Migrate existing tables — add any columns that were added after initial creation
 for (const col of ['refine_data TEXT', 'last_cards TEXT', 'last_narrative TEXT']) {
   try { db.exec(`ALTER TABLE profiles ADD COLUMN ${col}`); } catch {}
 }
+for (const col of ['shares REAL', 'purchase_price REAL', 'purchase_month INTEGER', 'purchase_year INTEGER', 'account_type TEXT', 'added_from TEXT']) {
+  try { db.exec(`ALTER TABLE portfolio_holdings ADD COLUMN ${col}`); } catch {}
+}
+
+// Log current portfolio_holdings schema for diagnostics
+const phInfo = db.prepare("PRAGMA table_info(portfolio_holdings)").all();
+console.log('[db] portfolio_holdings columns:', phInfo.map(c => c.name).join(', '));
 
 export default db;

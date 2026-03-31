@@ -83,3 +83,18 @@ export async function deleteHolding(token, holdingId) {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
+
+export async function updateHolding(token, holdingId, data) {
+  return authFetch(`/portfolio/holdings/${holdingId}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getQuotes(token, tickers) {
+  const q = Array.isArray(tickers) ? tickers.join(',') : tickers;
+  return authFetch(`/portfolio/quotes?tickers=${encodeURIComponent(q)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}

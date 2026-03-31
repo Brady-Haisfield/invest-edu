@@ -275,14 +275,8 @@ router.post('/portfolio/add', requireAuth, async (req, res, next) => {
       if (Number.isFinite(parsed) && parsed > 0) purchasePriceResolved = parsed;
     }
 
-    // Fetch current Finnhub price as cost basis only if no purchase price provided.
-    // This is best-effort — failure here must never block the insert.
-    if (!purchasePriceResolved) {
-      const q = await fetchSimpleQuote(cleanTicker);
-      console.log(`[portfolio/add] Finnhub quote for ${cleanTicker}:`, q);
-      if (q.currentPrice) purchasePriceResolved = q.currentPrice;
-    }
-
+    // Only compute shares when user explicitly provided a purchase price.
+    // Auto-fetching Finnhub price would make currentValue ≈ amountInvested → gain always ≈ $0.
     const shares = purchasePriceResolved ? amount / purchasePriceResolved : null;
 
     console.log(`[portfolio/add] inserting: ticker=${cleanTicker} amount=${amount} price=${purchasePriceResolved} shares=${shares}`);
@@ -334,11 +328,22 @@ router.get('/portfolio/holdings', requireAuth, async (req, res, next) => {
     });
 
     const holdings = rows.map((r) => {
+      console.log('[holding]', r.ticker, 'purchase_price:', r.purchase_price, 'shares:', r.shares, 'amount_invested:', r.amount_invested);
       const q = priceMap[r.ticker] ?? {};
       const currentPrice = q.currentPrice ?? null;
-      const currentValue = (r.shares != null && currentPrice != null) ? r.shares * currentPrice : null;
-      const gainLoss = currentValue != null ? currentValue - r.amount_invested : null;
-      const gainLossPct = gainLoss != null && r.amount_invested > 0 ? (gainLoss / r.amount_invested) * 100 : null;
+
+      // Compute gain/loss directly from purchase_price (source of truth).
+      // This avoids depending on the stored `shares` value being up-to-date.
+      let currentValue = null;
+      let gainLoss = null;
+      let gainLossPct = null;
+      if (r.purchase_price && r.purchase_price > 0 && currentPrice != null) {
+        const computedShares = r.amount_invested / r.purchase_price;
+        currentValue = computedShares * currentPrice;
+        gainLoss = currentValue - r.amount_invested;
+        gainLossPct = (gainLoss / r.amount_invested) * 100;
+      }
+
       const dayChange = currentValue != null && q.dayChangePct != null ? currentValue * (q.dayChangePct / 100) : null;
 
       return {
@@ -380,6 +385,82 @@ router.delete('/portfolio/holdings/:id', requireAuth, (req, res, next) => {
     if (result.changes === 0) return res.status(404).json({ error: 'Holding not found' });
 
     res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── PATCH /api/auth/portfolio/holdings/:id ────────────────────────────────────
+
+router.patch('/portfolio/holdings/:id', requireAuth, async (req, res, next) => {
+  try {
+    const holdingId = Number(req.params.id);
+    if (!Number.isFinite(holdingId)) return res.status(400).json({ error: 'Invalid id' });
+
+    console.log('[PATCH portfolio]', req.body);
+    const { amountInvested, purchasePrice, purchaseMonth, purchaseYear, accountType } = req.body;
+
+    const amount = parseFloat(amountInvested);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ error: 'amountInvested must be a positive number' });
+    }
+
+    let purchasePriceResolved = null;
+    if (purchasePrice != null && purchasePrice !== '') {
+      const parsed = parseFloat(purchasePrice);
+      if (Number.isFinite(parsed) && parsed > 0) purchasePriceResolved = parsed;
+    }
+
+    const shares = purchasePriceResolved ? amount / purchasePriceResolved : null;
+
+    const result = db.prepare(`
+      UPDATE portfolio_holdings SET
+        amount_invested = ?,
+        shares = ?,
+        purchase_price = ?,
+        purchase_month = ?,
+        purchase_year = ?,
+        account_type = ?
+      WHERE id = ? AND user_id = ?
+    `).run(
+      amount,
+      shares,
+      purchasePriceResolved,
+      purchaseMonth ? Number(purchaseMonth) : null,
+      purchaseYear ? Number(purchaseYear) : null,
+      accountType ? String(accountType) : null,
+      holdingId,
+      req.userId,
+    );
+
+    if (result.changes === 0) return res.status(404).json({ error: 'Holding not found' });
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /api/auth/portfolio/quotes ────────────────────────────────────────────
+
+router.get('/portfolio/quotes', requireAuth, async (req, res, next) => {
+  try {
+    const tickersParam = req.query.tickers ?? '';
+    const tickers = tickersParam
+      .split(',')
+      .map((t) => t.trim().toUpperCase())
+      .filter((t) => t && t.length <= 10)
+      .slice(0, 20);
+
+    if (tickers.length === 0) return res.json({ quotes: {} });
+
+    const results = await Promise.allSettled(tickers.map(fetchSimpleQuote));
+    const quotes = {};
+    results.forEach((r) => {
+      if (r.status === 'fulfilled') quotes[r.value.ticker] = r.value;
+    });
+
+    res.json({ quotes });
   } catch (err) {
     next(err);
   }

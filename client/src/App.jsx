@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { fetchSuggestions, fetchMarketRates } from './api/suggestions.js';
 import { fetchForecast } from './api/forecast.js';
-import { getMe, saveProfile } from './services/auth.js';
+import { getMe, saveProfile, getHoldings } from './services/auth.js';
 import PortfolioPage from './components/PortfolioPage.jsx';
 import AddInvestmentModal from './components/AddInvestmentModal.jsx';
 import DisclaimerBanner from './components/DisclaimerBanner.jsx';
@@ -107,7 +107,13 @@ function buildMergedInputs(profileInputs, refineInputs) {
 }
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState('home');
+  const savedTab = localStorage.getItem('meridian_active_tab') ?? 'home';
+  const [currentPage, setCurrentPage] = useState(savedTab);
+
+  function navigate(page) {
+    setCurrentPage(page);
+    localStorage.setItem('meridian_active_tab', page);
+  }
 
   // Auth state
   const [user, setUser]                   = useState(null);
@@ -197,6 +203,9 @@ export default function App() {
             hasCards: !!meData.savedProfile?.lastCards,
             cardCount: meData.savedProfile?.lastCards?.length ?? 0,
           }));
+          // Always fetch portfolio holdings on mount so "In Portfolio ✓" indicators
+          // are populated immediately after a page refresh.
+          fetchPortfolioHoldings(savedToken);
           if (meData.savedProfile) {
             const { inputs, refineInputs: savedRefine, lastCards, lastAdvisorNarrative } = meData.savedProfile;
             setProfileInputs(withFreshAge(inputs));
@@ -245,6 +254,7 @@ export default function App() {
     setUser(authUser);
     setToken(authToken);
     setShowAuthModal(false);
+    fetchPortfolioHoldings(authToken);
     try {
       const meData = await getMe(authToken);
       if (meData.savedProfile) {
@@ -280,9 +290,19 @@ export default function App() {
     }
   }
 
+  async function fetchPortfolioHoldings(authToken) {
+    try {
+      const data = await getHoldings(authToken);
+      setPortfolioTickers(new Set(data.holdings.map((h) => h.ticker)));
+    } catch {
+      // non-critical — portfolio indicators just won't show
+    }
+  }
+
   function signOut() {
     localStorage.removeItem('meridian_token');
     localStorage.removeItem('meridian_user');
+    localStorage.removeItem('meridian_active_tab');
     setUser(null);
     setToken(null);
     setCards(null);
@@ -310,7 +330,7 @@ export default function App() {
     setLastInputs(plan.inputs);
     setAdvisorNarrative(plan.advisorNarrative ?? null);
     setTreasuryRates(null);
-    setCurrentPage('home');
+    navigate('home');
   }
 
   // Core submit — returns { cards, advisorNarrative } or null on error
@@ -523,7 +543,7 @@ export default function App() {
       {/* Header */}
       <Nav
         currentPage={currentPage}
-        onNavigate={setCurrentPage}
+        onNavigate={navigate}
         user={user}
         onSignIn={() => openAuthModal('signin')}
         onSignOut={signOut}
