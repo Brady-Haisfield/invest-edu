@@ -361,23 +361,21 @@ export default function App() {
     }
   }
 
-  // Edit profile save
-  async function handleEditProfileSave(formData) {
-    setProfileInputs(withFreshAge(formData));
-    setShowEditProfile(false);
-    const ri  = refineRef.current;
-    const tok = tokenRef.current;
-    const merged = buildMergedInputs(formData, ri);
-    const result = await handleSubmitCore(merged);
-    if (result && tok) {
+  // Edit profile save — updates profile state and DB without re-running AI.
+  // User clicks "Refresh My Plan →" on the dashboard if they want new suggestions.
+  async function handleEditProfileSave(newInputs) {
+    setProfileInputs(withFreshAge(newInputs));
+    const tok  = tokenRef.current;
+    const ri   = refineRef.current;
+    if (tok) {
       saveProfile(tok, {
-        inputs: formData,
-        refineInputs: ri,
-        lastCards: result.cards,
-        lastAdvisorNarrative: result.advisorNarrative ?? null,
-        lastUpdatedAt: result.updatedAt,
+        inputs:              newInputs,
+        refineInputs:        ri,
+        lastCards:           cardsRef.current,
+        lastAdvisorNarrative: narrativeRef.current ?? null,
       }).catch(() => {});
     }
+    // Modal handles "Saved ✓" display and closes itself after 2s
   }
 
   // Called by DashboardPanel on any field change
