@@ -35,7 +35,7 @@ Meridian is a financial education web app for college students and young profess
 ### MILESTONE 1: Foundation and Database Migration 🔄 IN PROGRESS
 Done condition: App runs against Supabase (SQLite retired), deployment platform selected and configured, schema fully audited and documented, all API integrations audited for stability, full auth flow works end-to-end locally against Supabase.
 - [x] Task 1.1: Full codebase audit — map every route, component, feature, API call, and DB interaction
-- [ ] Task 1.2: SQLite schema audit — document every table, column, constraint, and relationship ← CURRENT
+- [x] Task 1.2: SQLite schema audit — document every table, column, constraint, and relationship
 - [ ] Task 1.3: Select and configure deployment platform — Vercel (frontend), Railway (backend)
 - [ ] Task 1.4: Create Supabase project and design PostgreSQL schema
 - [ ] Task 1.5: Auth decision documented — Supabase Auth migration approach
@@ -97,5 +97,5 @@ Done condition: App is live on production, mobile-responsive, handles errors gra
 ---
 
 ## Resume Point
-**Next action**: Task 1.2 — SQLite schema audit
-**Context**: Task 1.1 complete. Schema is partially documented from Task 1.1 (4 tables found: users, profiles, saved_plans, portfolio_holdings). Task 1.2 digs deeper — documents all constraints, indexes, migration behavior, and data shape of JSON columns.
+**Next action**: Task 1.3 — Vercel and Railway accounts and projects created
+**Context**: Task 1.2 complete. Full schema audit in SCHEMA_AUDIT.md. Key findings: users table replaced by Supabase Auth (no data migration); profiles/saved_plans/portfolio_holdings migrate to PostgreSQL with cascade deletes, user_id indexes, and a new last_updated_at column on profiles. JSON column shapes fully documented. 9 recommended improvements for PostgreSQL schema captured in SCHEMA_AUDIT.md.
