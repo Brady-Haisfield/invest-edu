@@ -1,5 +1,4 @@
-// Uses Finnhub free API for stock quotes
-// Get a free key at finnhub.io
+// Finnhub free API — stock quotes and metrics for the suggestions pipeline
 
 const BASE = 'https://finnhub.io/api/v1';
 
@@ -59,10 +58,6 @@ export async function getQuote(ticker) {
   const peRatio    = m.metric?.peBasicExclExtraTTM ?? m.metric?.peTTM ?? null;
   const industry   = p.finnhubIndustry ?? '';
   const isREIT     = industry.includes('Real Estate') || industry.includes('REIT');
-
-  // Log ALL dividend/yield-related fields from Finnhub to find the correct key
-  const allDivKeys = Object.keys(m.metric || {}).filter(k => k.toLowerCase().includes('dividend') || k.toLowerCase().includes('yield'));
-  console.log(`[yahooService] ${ticker} | dividend/yield keys:`, allDivKeys.reduce((acc, k) => { acc[k] = m.metric[k]; return acc; }, {}));
 
   // Conditional FFO fetch for REITs — best-effort, never blocks the response
   let ffo = null;

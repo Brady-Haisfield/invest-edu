@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { validateInputs } from '../utils/validators.js';
 import { getSuggestions } from '../services/claudeService.js';
-import { getQuote } from '../services/yahooService.js';
+import { getQuote } from '../services/finnhubService.js';
 import { getTreasuryRates } from '../services/fredService.js';
 import { getAnalystData, getETFInfo, getPriceTarget, getAnalystSentiment, getETFHoldings } from '../services/fmpService.js';
 import { getOverview, getNewsSentiment } from '../services/alphaService.js';
