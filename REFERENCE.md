@@ -50,6 +50,17 @@ Business model: Free at launch. Subscription eventually. Goal right now is real 
 
 Note: profiles and portfolio_holdings use ALTER TABLE migration loops at startup to add columns — fragile pattern, fix in Supabase schema design
 
+**Supabase migration notes (from Task 1.2 audit):**
+- `users` table is replaced entirely by Supabase Auth (`auth.users`) — we only keep a public `profiles` table
+- All `user_id` columns change from `INTEGER` to `UUID` referencing `auth.users.id`
+- All JSON columns (`profile_data`, `refine_data`, `last_cards`, `inputs`, `cards`) become `JSONB`
+- FK enforcement in SQLite is unreliable (per-connection, db.js does not set it) — PostgreSQL enforces properly
+- `profiles.id` can be simplified: use `user_id UUID PRIMARY KEY` instead of a separate auto-increment id
+- Add explicit `ON DELETE CASCADE` on all `user_id` FKs
+- Add indexes on `portfolio_holdings.user_id` and `saved_plans.user_id`
+- Live data: 2 users, 2 profiles, 0 saved plans, 0 portfolio holdings
+- `dateOfBirth.day` is absent in both live profile rows (legacy) — App.jsx handles with `?? 1` fallback
+
 ## API Integrations
 
 | Service | Used For | Rate Limit | Failure Handling |
@@ -143,7 +154,8 @@ Note: profiles and portfolio_holdings use ALTER TABLE migration loops at startup
 Done when: App runs against Supabase, SQLite retired, auth migrated, all APIs audited
 
 - [x] Task 1.1: Full codebase audit
-- [ ] Task 1.2: SQLite schema deep audit — CURRENT
+- [x] Task 1.2: SQLite schema deep audit
+- [ ] Task 1.3: Vercel and Railway accounts and projects created — CURRENT
 - [ ] Task 1.3: Vercel and Railway accounts and projects created
 - [ ] Task 1.4: Supabase project created, PostgreSQL schema designed
 - [ ] Task 1.5: Supabase Auth migration approach documented

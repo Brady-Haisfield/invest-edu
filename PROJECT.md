@@ -27,6 +27,9 @@ Meridian is a financial education web app for college students and young profess
 - `/api/test-apis` is an unauthenticated dev route — should be removed or auth-gated before deploy
 - `yahoo-finance2` package installed but unused — remove in Task 1.8 cleanup
 - `lastUpdatedAt` in `meData.savedProfile` is never returned by server — field is always undefined in client
+- `dateOfBirth.day` missing in both live profile rows (legacy data, pre-dates day field) — App.jsx already handles with `?? 1` fallback
+- FK enforcement in SQLite is per-connection, not persistent — `db.js` does not set `PRAGMA foreign_keys = ON` explicitly. PostgreSQL enforces properly.
+- All `user_id` FKs must change from INTEGER → UUID when migrating to Supabase Auth
 
 ---
 
@@ -35,8 +38,8 @@ Meridian is a financial education web app for college students and young profess
 ### MILESTONE 1: Foundation and Database Migration 🔄 IN PROGRESS
 Done condition: App runs against Supabase (SQLite retired), deployment platform selected and configured, schema fully audited and documented, all API integrations audited for stability, full auth flow works end-to-end locally against Supabase.
 - [x] Task 1.1: Full codebase audit — map every route, component, feature, API call, and DB interaction
-- [ ] Task 1.2: SQLite schema audit — document every table, column, constraint, and relationship ← CURRENT
-- [ ] Task 1.3: Select and configure deployment platform — Vercel (frontend), Railway (backend)
+- [x] Task 1.2: SQLite schema audit — document every table, column, constraint, and relationship
+- [ ] Task 1.3: Select and configure deployment platform — Vercel (frontend), Railway (backend) ← CURRENT
 - [ ] Task 1.4: Create Supabase project and design PostgreSQL schema
 - [ ] Task 1.5: Auth decision documented — Supabase Auth migration approach
 - [ ] Task 1.6: Implement Supabase Auth migration
@@ -97,5 +100,5 @@ Done condition: App is live on production, mobile-responsive, handles errors gra
 ---
 
 ## Resume Point
-**Next action**: Task 1.2 — SQLite schema audit
-**Context**: Task 1.1 complete. Schema is partially documented from Task 1.1 (4 tables found: users, profiles, saved_plans, portfolio_holdings). Task 1.2 digs deeper — documents all constraints, indexes, migration behavior, and data shape of JSON columns.
+**Next action**: Task 1.3 — Deployment platform setup
+**Context**: Tasks 1.1 and 1.2 complete. Schema fully audited. Key finding: all user_id FKs change from INTEGER to UUID when migrating to Supabase Auth. 2 live users + 2 profiles to carry over; 0 plan/holding rows. Supabase JSONB will store profile_data, refine_data, last_cards, inputs, cards columns as-is. Task 1.3 requires Braden to create Vercel and Railway accounts/projects — human action required.
