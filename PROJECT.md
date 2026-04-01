@@ -2,7 +2,7 @@
 
 **Status**: In Progress
 **Current Milestone**: 1 — Foundation and Database Migration
-**Last Updated**: 2026-03-31
+**Last Updated**: 2026-04-01
 
 ---
 
@@ -36,7 +36,7 @@ Meridian is a financial education web app for college students and young profess
 
 ## Milestone Map
 
-### MILESTONE 1: Foundation and Database Migration 🔄 IN PROGRESS
+### MILESTONE 1: Foundation and Database Migration ✅ COMPLETE
 Done condition: App runs against Supabase (SQLite retired), deployment platform selected and configured, schema fully audited and documented, all API integrations audited for stability, full auth flow works end-to-end locally against Supabase.
 - [x] Task 1.1: Full codebase audit — map every route, component, feature, API call, and DB interaction
 - [x] Task 1.2: SQLite schema audit — document every table, column, constraint, and relationship
@@ -48,7 +48,7 @@ Done condition: App runs against Supabase (SQLite retired), deployment platform 
 - [x] Task 1.8: Update all server routes to use Supabase client instead of SQLite
 - [x] Task 1.9: Audit all API integrations (Finnhub, FMP, Alpha Vantage, FRED)
 - [x] Task 1.10: Verify full auth flow end-to-end
-- [ ] Task 1.11: Update CLAUDE.md to reflect new architecture ← CURRENT
+- [x] Task 1.11: Update CLAUDE.md to reflect new architecture
 
 ### MILESTONE 2: Onboarding Redesign ⏳
 Done condition: Onboarding is 5–10 questions, conversational, zero pre-selections, nav hidden during flow, completes to suggestions page, profile saves to Supabase.
@@ -101,5 +101,5 @@ Done condition: App is live on production, mobile-responsive, handles errors gra
 ---
 
 ## Resume Point
-**Next action**: Task 1.11 — Update CLAUDE.md to reflect new architecture
-**Context**: Task 1.10 complete. Root cause of auth 401s was ES module hoisting — supabase.js was initializing the admin client before dotenv.config() ran. Fixed with lazy Proxy pattern (same as claudeService.js). Profile restore now working. Task 1.11 is the last task before Milestone 1 integrity review.
+**Next action**: Task 2.1 — Audit current 9-step onboarding
+**Context**: Milestone 1 complete. CLAUDE.md updated to reflect Supabase auth, new routes (auth/portfolio/market-rates), updated env vars, and corrected feature list. Begin Milestone 2: Onboarding Redesign.
