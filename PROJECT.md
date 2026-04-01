@@ -20,6 +20,7 @@ Meridian is a financial education web app for college students and young profess
 - **Unauthenticated Claude endpoints**: `/api/suggestions` and `/api/forecast` have no auth gate — anyone can hit them and trigger Claude spend. Flag for Task 1.8.
 
 ## Open Questions / Known Issues
+- **Profile not restoring on login (post-migration)**: Migrated profile data exists in Supabase but onboarding shows instead of dashboard on login. Suspected legacy blob format in profile_data JSONB — the migration preserved the raw SQLite JSON which may be in the old `{ inputs, refineInputs, ... }` blob format. /me handler has legacy detection but may need investigation. Investigate in Task 1.10.
 - Snaptrade API evaluation still pending (Task 4.7) — unknown complexity
 - Need to confirm all third-party API keys are present and stable before Milestone 1 closes
 - Partner needs to be looped in on all Milestone 1 backend tasks before execution
@@ -43,10 +44,10 @@ Done condition: App runs against Supabase (SQLite retired), deployment platform 
 - [x] Task 1.4: Create Supabase project and design PostgreSQL schema
 - [x] Task 1.5: Auth decision documented — Supabase Auth migration approach
 - [x] Task 1.6: Implement Supabase Auth migration
-- [ ] Task 1.7: Migrate all non-auth tables and data to Supabase PostgreSQL ← CURRENT
-- [ ] Task 1.8: Update all server routes to use Supabase client instead of SQLite
-- [ ] Task 1.9: Audit all API integrations (Finnhub, FMP, Alpha Vantage, FRED)
-- [ ] Task 1.10: Verify full auth flow end-to-end
+- [x] Task 1.7: Migrate all non-auth tables and data to Supabase PostgreSQL
+- [x] Task 1.8: Update all server routes to use Supabase client instead of SQLite
+- [x] Task 1.9: Audit all API integrations (Finnhub, FMP, Alpha Vantage, FRED)
+- [ ] Task 1.10: Verify full auth flow end-to-end ← CURRENT
 - [ ] Task 1.11: Update CLAUDE.md to reflect new architecture
 
 ### MILESTONE 2: Onboarding Redesign ⏳
@@ -100,5 +101,5 @@ Done condition: App is live on production, mobile-responsive, handles errors gra
 ---
 
 ## Resume Point
-**Next action**: Task 1.7 — Migrate non-auth tables and data to Supabase PostgreSQL
-**Context**: Tasks 1.1–1.6 complete. Auth is now fully on Supabase. Server uses supabaseAdmin.auth.getUser() for token validation. Client uses onAuthStateChange for session restore. The app is temporarily broken between 1.6 and 1.8 completion — SQLite routes still use integer user IDs but req.userId is now a UUID. Tasks 1.7 and 1.8 must be completed in the same session. 2 live SQLite users + 2 profiles to migrate; 0 plans/holdings rows.
+**Next action**: Task 1.10 — Verify full auth flow end-to-end + fix profile restore bug
+**Context**: Tasks 1.1–1.9 complete. APIs confirmed stable. Key open issue: migrated profile data not restoring on login (onboarding shows instead of dashboard). Investigate the JSONB shape of migrated profile_data in Supabase — likely legacy blob format mismatch. Task 1.10 must verify login, session restore, profile save, plan save/delete, portfolio add/delete, and fix the profile restore bug.
