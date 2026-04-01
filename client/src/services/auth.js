@@ -14,20 +14,6 @@ async function authFetch(path, options = {}) {
   return data;
 }
 
-export async function register(email, password) {
-  return authFetch('/register', {
-    method: 'POST',
-    body: JSON.stringify({ email, password }),
-  });
-}
-
-export async function login(email, password) {
-  return authFetch('/login', {
-    method: 'POST',
-    body: JSON.stringify({ email, password }),
-  });
-}
-
 export async function getMe(token) {
   return authFetch('/me', {
     headers: { Authorization: `Bearer ${token}` },

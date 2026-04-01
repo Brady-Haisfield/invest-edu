@@ -1,88 +1,14 @@
 import { Router } from 'express';
-import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
 import db from '../services/db.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
-const BCRYPT_ROUNDS = 10;
-
-function signToken(userId) {
-  return jwt.sign({ userId }, process.env.AUTH_SECRET, { expiresIn: '30d' });
-}
-
-function isValidEmail(email) {
-  return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-}
-
-// ── POST /api/auth/register ──────────────────────────────────────────────────
-
-router.post('/register', async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!isValidEmail(email)) {
-      return res.status(400).json({ error: 'Invalid email address' });
-    }
-    if (typeof password !== 'string' || password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
-    }
-
-    const normalizedEmail = email.trim().toLowerCase();
-    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
-    if (existing) {
-      return res.status(400).json({ error: 'An account with that email already exists' });
-    }
-
-    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    const result = db.prepare('INSERT INTO users (email, password_hash) VALUES (?, ?)').run(normalizedEmail, passwordHash);
-    const userId = result.lastInsertRowid;
-
-    res.json({
-      token: signToken(userId),
-      user: { id: userId, email: normalizedEmail },
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// ── POST /api/auth/login ─────────────────────────────────────────────────────
-
-router.post('/login', async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!isValidEmail(email) || typeof password !== 'string') {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const normalizedEmail = email.trim().toLowerCase();
-    const user = db.prepare('SELECT id, email, password_hash FROM users WHERE email = ?').get(normalizedEmail);
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const match = await bcrypt.compare(password, user.password_hash);
-    if (!match) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    res.json({
-      token: signToken(user.id),
-      user: { id: user.id, email: user.email },
-    });
-  } catch (err) {
-    next(err);
-  }
-});
 
 // ── GET /api/auth/me ─────────────────────────────────────────────────────────
 
 router.get('/me', requireAuth, (req, res, next) => {
   try {
-    const user = db.prepare('SELECT id, email, created_at FROM users WHERE id = ?').get(req.userId);
-    if (!user) return res.status(401).json({ error: 'User not found' });
+    const user = { id: req.userId, email: req.userEmail };
 
     const profile = db.prepare(
       'SELECT profile_data, refine_data, last_cards, last_narrative FROM profiles WHERE user_id = ?'

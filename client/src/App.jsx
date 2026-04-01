@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { fetchSuggestions, fetchMarketRates } from './api/suggestions.js';
 import { fetchForecast } from './api/forecast.js';
 import { getMe, saveProfile, getHoldings } from './services/auth.js';
+import { supabase } from './lib/supabase.js';
 import PortfolioPage from './components/PortfolioPage.jsx';
 import AddInvestmentModal from './components/AddInvestmentModal.jsx';
 import DisclaimerBanner from './components/DisclaimerBanner.jsx';
@@ -20,6 +21,95 @@ import SavedPlansModal from './components/SavedPlansModal.jsx';
 import LandingPage from './components/LandingPage.jsx';
 import DashboardPanel from './components/DashboardPanel.jsx';
 import EditProfileModal from './components/EditProfileModal.jsx';
+
+// ── Password Reset Overlay ────────────────────────────────────────────────────
+// Rendered when onAuthStateChange fires a PASSWORD_RECOVERY event (user landed
+// from a password-reset email link). Calls supabase.auth.updateUser to commit
+// the new password, then dismisses itself.
+
+function PasswordResetModal({ onDone }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm]   = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState('');
+  const [done, setDone]         = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+    if (password.length < 8) { setError('Password must be at least 8 characters'); return; }
+    if (password !== confirm)  { setError('Passwords do not match'); return; }
+    setLoading(true);
+    try {
+      const { error: authError } = await supabase.auth.updateUser({ password });
+      if (authError) { setError(authError.message); return; }
+      setDone(true);
+      setTimeout(onDone, 1500);
+    } catch {
+      setError('Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const OVERLAY = {
+    position: 'fixed', inset: 0, zIndex: 300,
+    background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: 'var(--space-4)',
+  };
+  const CARD = {
+    width: '100%', maxWidth: 400,
+    background: 'var(--bg-card)', border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)',
+  };
+  const INPUT_STYLE = {
+    width: '100%', padding: '9px 12px',
+    background: 'var(--bg-input)', border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)',
+    fontSize: 13, fontFamily: "'DM Mono', monospace", boxSizing: 'border-box',
+  };
+
+  return (
+    <div style={OVERLAY}>
+      <div style={CARD}>
+        <h2 style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontSize: 22, fontWeight: 400, marginBottom: 'var(--space-4)' }}>
+          Set a new password
+        </h2>
+        {done ? (
+          <p style={{ fontSize: 13, color: 'var(--accent-green)', fontFamily: "'DM Mono', monospace" }}>
+            Password updated ✓
+          </p>
+        ) : (
+          <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace", marginBottom: 5 }}>New Password</label>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min. 8 characters" style={INPUT_STYLE} autoFocus />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace", marginBottom: 5 }}>Confirm Password</label>
+              <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Repeat password" style={INPUT_STYLE} />
+            </div>
+            {error && <p style={{ fontSize: 11, color: 'var(--accent-red)', fontFamily: "'DM Mono', monospace", margin: 0 }}>{error}</p>}
+            <button
+              type="submit" disabled={loading}
+              style={{
+                marginTop: 'var(--space-1)', padding: '10px 16px',
+                background: loading ? 'var(--bg-input)' : 'var(--accent-green)',
+                border: 'none', borderRadius: 'var(--radius)',
+                color: loading ? 'var(--text-muted)' : '#000',
+                fontSize: 13, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
+                fontFamily: "'DM Mono', monospace",
+              }}
+            >
+              {loading ? 'Saving...' : 'Update Password'}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // Compute exact age from { day (optional), month (1-12), year } at call time.
 // Falls back to day=1 for legacy profiles that only stored month+year.
@@ -126,6 +216,7 @@ export default function App() {
   const [authModalTab, setAuthModalTab]   = useState('signin');
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showSavedPlans, setShowSavedPlans] = useState(false);
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
   const [toast, setToast]                 = useState(null);
 
   // Profile/dashboard state
@@ -177,59 +268,80 @@ export default function App() {
   // No auto-fetch on load — saved plan is shown immediately from DB cache.
   // AI only runs when user explicitly clicks "Refresh My Plan →" or "Update My Plan →".
 
-  // Restore auth from localStorage on mount and verify token
+  // Restore auth via Supabase session (handles refresh tokens automatically).
+  // onAuthStateChange fires INITIAL_SESSION on mount so we never need localStorage.
   useEffect(() => {
-    const savedToken = localStorage.getItem('meridian_token');
-    const savedUser  = localStorage.getItem('meridian_user');
-    if (savedToken && savedUser) {
-      setToken(savedToken);
-      setUser(JSON.parse(savedUser));
-      getMe(savedToken)
-        .then((meData) => {
-          console.log('[mount] getMe response:', JSON.stringify({
-            hasProfile: !!meData.savedProfile,
-            hasInputs: !!meData.savedProfile?.inputs,
-            hasCards: !!meData.savedProfile?.lastCards,
-            cardCount: meData.savedProfile?.lastCards?.length ?? 0,
-          }));
-          // Always fetch portfolio holdings on mount so "In Portfolio ✓" indicators
-          // are populated immediately after a page refresh.
-          fetchPortfolioHoldings(savedToken);
-          if (meData.savedProfile) {
-            const { inputs, refineInputs: savedRefine, lastCards, lastAdvisorNarrative } = meData.savedProfile;
-            setProfileInputs(withFreshAge(inputs));
-            setHasProfile(true);
-            if (savedRefine) setRefineInputs(savedRefine);
-            if (lastCards) {
-              setCards(lastCards);
-              setLastInputs(buildMergedInputs(inputs, savedRefine));
-              setAdvisorNarrative(lastAdvisorNarrative ?? null);
-              setPlanIsSaved(true);
-              setPlanUpdatedAt(meData.savedProfile.lastUpdatedAt ?? null);
-              console.log('[mount] restored', lastCards.length, 'cards from DB ✓');
-              // Fetch live market rates independently — not bundled with cached cards
-              fetchMarketRates().then((rates) => {
-                console.log('[mount] fetchMarketRates result:', rates);
-                if (rates) setTreasuryRates(rates);
-              });
-            } else {
-              console.log('[mount] profile found but no cached cards — user can generate plan manually');
-            }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setShowPasswordReset(true);
+        setAuthChecked(true);
+        return;
+      }
+
+      if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setToken(null);
+        setAuthChecked(true);
+        return;
+      }
+
+      if (session) {
+        const authUser  = session.user;
+        const authToken = session.access_token;
+        setUser(authUser);
+        setToken(authToken);
+
+        if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
+          // On initial load, fetch profile + portfolio
+          if (event === 'INITIAL_SESSION') {
+            fetchPortfolioHoldings(authToken);
+            getMe(authToken)
+              .then((meData) => {
+                console.log('[mount] getMe response:', JSON.stringify({
+                  hasProfile: !!meData.savedProfile,
+                  hasInputs: !!meData.savedProfile?.inputs,
+                  hasCards: !!meData.savedProfile?.lastCards,
+                  cardCount: meData.savedProfile?.lastCards?.length ?? 0,
+                }));
+                if (meData.savedProfile) {
+                  const { inputs, refineInputs: savedRefine, lastCards, lastAdvisorNarrative } = meData.savedProfile;
+                  setProfileInputs(withFreshAge(inputs));
+                  setHasProfile(true);
+                  if (savedRefine) setRefineInputs(savedRefine);
+                  if (lastCards) {
+                    setCards(lastCards);
+                    setLastInputs(buildMergedInputs(inputs, savedRefine));
+                    setAdvisorNarrative(lastAdvisorNarrative ?? null);
+                    setPlanIsSaved(true);
+                    setPlanUpdatedAt(meData.savedProfile.lastUpdatedAt ?? null);
+                    console.log('[mount] restored', lastCards.length, 'cards from DB ✓');
+                    fetchMarketRates().then((rates) => {
+                      console.log('[mount] fetchMarketRates result:', rates);
+                      if (rates) setTreasuryRates(rates);
+                    });
+                  } else {
+                    console.log('[mount] profile found but no cached cards');
+                  }
+                } else {
+                  console.log('[mount] no saved profile — showing onboarding');
+                }
+              })
+              .catch((err) => console.error('[mount] getMe failed:', err.message))
+              .finally(() => setAuthChecked(true));
           } else {
-            console.log('[mount] no saved profile — showing onboarding');
+            // TOKEN_REFRESHED: just update token in state, no profile re-fetch needed
+            setAuthChecked(true);
           }
-        })
-        .catch((err) => {
-          console.error('[mount] getMe failed:', err.message);
-          localStorage.removeItem('meridian_token');
-          localStorage.removeItem('meridian_user');
-          setToken(null);
-          setUser(null);
-        })
-        .finally(() => setAuthChecked(true));
-    } else {
-      setAuthChecked(true);
-    }
+        } else {
+          setAuthChecked(true);
+        }
+      } else {
+        // No session on INITIAL_SESSION means user is logged out
+        setAuthChecked(true);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   // Auto-clear toast after 3 seconds
@@ -241,6 +353,9 @@ export default function App() {
 
 
   async function handleAuthSuccess(authUser, authToken) {
+    // Session state is managed by Supabase — no localStorage writes needed.
+    // We still call setUser/setToken immediately so the UI updates without
+    // waiting for the next onAuthStateChange event.
     setUser(authUser);
     setToken(authToken);
     setShowAuthModal(false);
@@ -279,9 +394,8 @@ export default function App() {
     }
   }
 
-  function signOut() {
-    localStorage.removeItem('meridian_token');
-    localStorage.removeItem('meridian_user');
+  async function signOut() {
+    await supabase.auth.signOut();
     localStorage.removeItem('meridian_active_tab');
     setUser(null);
     setToken(null);
@@ -483,6 +597,7 @@ export default function App() {
   if (!user) {
     return (
       <div style={{ minHeight: '100vh' }}>
+        {showPasswordReset && <PasswordResetModal onDone={() => setShowPasswordReset(false)} />}
         {showAuthModal && (
           <AuthModal
             defaultTab={authModalTab}
@@ -500,6 +615,9 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh' }}>
+      {/* Password reset overlay (triggered by email link) */}
+      {showPasswordReset && <PasswordResetModal onDone={() => setShowPasswordReset(false)} />}
+
       {/* Auth modals */}
       {showAuthModal && (
         <AuthModal
