@@ -39,11 +39,11 @@ Meridian is a financial education web app for college students and young profess
 Done condition: App runs against Supabase (SQLite retired), deployment platform selected and configured, schema fully audited and documented, all API integrations audited for stability, full auth flow works end-to-end locally against Supabase.
 - [x] Task 1.1: Full codebase audit — map every route, component, feature, API call, and DB interaction
 - [x] Task 1.2: SQLite schema audit — document every table, column, constraint, and relationship
-- [ ] Task 1.3: Select and configure deployment platform — Vercel (frontend), Railway (backend) ← CURRENT
-- [ ] Task 1.4: Create Supabase project and design PostgreSQL schema
-- [ ] Task 1.5: Auth decision documented — Supabase Auth migration approach
-- [ ] Task 1.6: Implement Supabase Auth migration
-- [ ] Task 1.7: Migrate all non-auth tables and data to Supabase PostgreSQL
+- [x] Task 1.3: Select and configure deployment platform — Vercel (frontend), Railway (backend)
+- [x] Task 1.4: Create Supabase project and design PostgreSQL schema
+- [x] Task 1.5: Auth decision documented — Supabase Auth migration approach
+- [x] Task 1.6: Implement Supabase Auth migration
+- [ ] Task 1.7: Migrate all non-auth tables and data to Supabase PostgreSQL ← CURRENT
 - [ ] Task 1.8: Update all server routes to use Supabase client instead of SQLite
 - [ ] Task 1.9: Audit all API integrations (Finnhub, FMP, Alpha Vantage, FRED)
 - [ ] Task 1.10: Verify full auth flow end-to-end
@@ -100,5 +100,5 @@ Done condition: App is live on production, mobile-responsive, handles errors gra
 ---
 
 ## Resume Point
-**Next action**: Task 1.3 — Deployment platform setup
-**Context**: Tasks 1.1 and 1.2 complete. Schema fully audited. Key finding: all user_id FKs change from INTEGER to UUID when migrating to Supabase Auth. 2 live users + 2 profiles to carry over; 0 plan/holding rows. Supabase JSONB will store profile_data, refine_data, last_cards, inputs, cards columns as-is. Task 1.3 requires Braden to create Vercel and Railway accounts/projects — human action required.
+**Next action**: Task 1.7 — Migrate non-auth tables and data to Supabase PostgreSQL
+**Context**: Tasks 1.1–1.6 complete. Auth is now fully on Supabase. Server uses supabaseAdmin.auth.getUser() for token validation. Client uses onAuthStateChange for session restore. The app is temporarily broken between 1.6 and 1.8 completion — SQLite routes still use integer user IDs but req.userId is now a UUID. Tasks 1.7 and 1.8 must be completed in the same session. 2 live SQLite users + 2 profiles to migrate; 0 plans/holdings rows.
