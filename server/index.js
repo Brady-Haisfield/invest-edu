@@ -13,8 +13,15 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors({ origin: ['http://localhost:5173', 'http://127.0.0.1:5173'] }));
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  ...(process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN] : []),
+];
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
+
+app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 app.use('/api/suggestions', requireAuth, suggestionsRouter);
 app.use('/api/forecast', requireAuth, forecastRouter);

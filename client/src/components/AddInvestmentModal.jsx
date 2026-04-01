@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { addHolding } from '../services/auth.js';
+import { API_BASE } from '../api/base.js';
 
 const ACCOUNT_OPTIONS = [
   '', 'Taxable brokerage', 'Roth IRA', 'Traditional IRA', '401(k) / employer plan', 'Not sure',
@@ -44,7 +45,7 @@ export default function AddInvestmentModal({
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(query)}`);
         const data = await res.json();
         setSuggestions(data.results ?? []);
         setShowDropdown((data.results ?? []).length > 0);

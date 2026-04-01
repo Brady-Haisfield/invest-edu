@@ -1,5 +1,7 @@
+import { API_BASE } from './base.js';
+
 export async function fetchForecast(ticker) {
-  const res = await fetch('/api/forecast', {
+  const res = await fetch(`${API_BASE}/api/forecast`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ticker }),

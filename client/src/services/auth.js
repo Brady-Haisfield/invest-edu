@@ -1,4 +1,5 @@
-const BASE = '/api/auth';
+import { API_BASE } from '../api/base.js';
+const BASE = `${API_BASE}/api/auth`;
 
 async function authFetch(path, options = {}) {
   const { headers: extraHeaders, ...rest } = options;

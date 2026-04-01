@@ -102,4 +102,4 @@ Done condition: App is live on production, mobile-responsive, handles errors gra
 
 ## Resume Point
 **Next action**: Task 1.10 — Verify full auth flow end-to-end + fix profile restore bug
-**Context**: Tasks 1.1–1.9 complete. APIs confirmed stable. Key open issue: migrated profile data not restoring on login (onboarding shows instead of dashboard). Investigate the JSONB shape of migrated profile_data in Supabase — likely legacy blob format mismatch. Task 1.10 must verify login, session restore, profile save, plan save/delete, portfolio add/delete, and fix the profile restore bug.
+**Context**: Tasks 1.1–1.9 complete. APIs confirmed stable. Key open issue: migrated profile data not restoring on login (onboarding shows instead of dashboard). Investigate the JSONB shape of migrated profile_data in Supabase — likely legacy blob format mismatch. Task 1.10 must verify login, session restore, profile save, plan save/delete, portfolio add/delete, and fix the profile restore bug. Partner's Task 1.3 added: API_BASE in client, CORS_ORIGIN in server, /api/health endpoint, vercel.json + railway.toml config files.
