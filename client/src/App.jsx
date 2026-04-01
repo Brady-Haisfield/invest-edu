@@ -380,8 +380,8 @@ export default function App() {
         // No cached results — user will see "generate plan" state and click the button
       }
       // No savedProfile → user stays on onboarding (hasProfile = false)
-    } catch {
-      // non-critical
+    } catch (err) {
+      console.error('[login] getMe failed:', err.message);
     }
   }
 

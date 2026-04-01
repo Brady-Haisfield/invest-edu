@@ -47,8 +47,8 @@ Done condition: App runs against Supabase (SQLite retired), deployment platform 
 - [x] Task 1.7: Migrate all non-auth tables and data to Supabase PostgreSQL
 - [x] Task 1.8: Update all server routes to use Supabase client instead of SQLite
 - [x] Task 1.9: Audit all API integrations (Finnhub, FMP, Alpha Vantage, FRED)
-- [ ] Task 1.10: Verify full auth flow end-to-end ← CURRENT
-- [ ] Task 1.11: Update CLAUDE.md to reflect new architecture
+- [x] Task 1.10: Verify full auth flow end-to-end
+- [ ] Task 1.11: Update CLAUDE.md to reflect new architecture ← CURRENT
 
 ### MILESTONE 2: Onboarding Redesign ⏳
 Done condition: Onboarding is 5–10 questions, conversational, zero pre-selections, nav hidden during flow, completes to suggestions page, profile saves to Supabase.
@@ -101,5 +101,5 @@ Done condition: App is live on production, mobile-responsive, handles errors gra
 ---
 
 ## Resume Point
-**Next action**: Task 1.10 — Verify full auth flow end-to-end + fix profile restore bug
-**Context**: Tasks 1.1–1.9 complete. APIs confirmed stable. Key open issue: migrated profile data not restoring on login (onboarding shows instead of dashboard). Investigate the JSONB shape of migrated profile_data in Supabase — likely legacy blob format mismatch. Task 1.10 must verify login, session restore, profile save, plan save/delete, portfolio add/delete, and fix the profile restore bug. Partner's Task 1.3 added: API_BASE in client, CORS_ORIGIN in server, /api/health endpoint, vercel.json + railway.toml config files.
+**Next action**: Task 1.11 — Update CLAUDE.md to reflect new architecture
+**Context**: Task 1.10 complete. Root cause of auth 401s was ES module hoisting — supabase.js was initializing the admin client before dotenv.config() ran. Fixed with lazy Proxy pattern (same as claudeService.js). Profile restore now working. Task 1.11 is the last task before Milestone 1 integrity review.
