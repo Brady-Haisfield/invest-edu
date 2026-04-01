@@ -36,7 +36,7 @@ Meridian is a financial education web app for college students and young profess
 Done condition: App runs against Supabase (SQLite retired), deployment platform selected and configured, schema fully audited and documented, all API integrations audited for stability, full auth flow works end-to-end locally against Supabase.
 - [x] Task 1.1: Full codebase audit — map every route, component, feature, API call, and DB interaction
 - [x] Task 1.2: SQLite schema audit — document every table, column, constraint, and relationship
-- [ ] Task 1.3: Select and configure deployment platform — Vercel (frontend), Railway (backend)
+- [x] Task 1.3: Select and configure deployment platform — Vercel (frontend), Railway (backend)
 - [ ] Task 1.4: Create Supabase project and design PostgreSQL schema
 - [ ] Task 1.5: Auth decision documented — Supabase Auth migration approach
 - [ ] Task 1.6: Implement Supabase Auth migration
@@ -97,5 +97,5 @@ Done condition: App is live on production, mobile-responsive, handles errors gra
 ---
 
 ## Resume Point
-**Next action**: Task 1.3 — Vercel and Railway accounts and projects created
-**Context**: Task 1.2 complete. Full schema audit in SCHEMA_AUDIT.md. Key findings: users table replaced by Supabase Auth (no data migration); profiles/saved_plans/portfolio_holdings migrate to PostgreSQL with cascade deletes, user_id indexes, and a new last_updated_at column on profiles. JSON column shapes fully documented. 9 recommended improvements for PostgreSQL schema captured in SCHEMA_AUDIT.md.
+**Next action**: Task 1.4 — Create Supabase project and design PostgreSQL schema
+**Context**: Task 1.3 complete. Deployment config files created: client/vercel.json (SPA rewrite), server/railway.toml (nixpacks build, health check at /api/health), client/.env.example (VITE_API_BASE_URL). All client fetch calls now prefix with API_BASE so production Vercel → Railway calls work. CORS updated to read CORS_ORIGIN env var (partner needs to set this to the Vercel URL in Railway). Still needed by user: create accounts on Vercel (root dir: client/) and Railway (root dir: server/) and link the GitHub repo.

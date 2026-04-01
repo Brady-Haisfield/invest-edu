@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { API_BASE } from '../api/base.js';
 
 const TICKER_RE = /^[A-Z]{1,5}$/;
 
@@ -21,7 +22,7 @@ export default function ForecastForm({ onSubmit, disabled }) {
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(query)}`);
         const data = await res.json();
         setSuggestions(data.results ?? []);
         setShowDropdown((data.results ?? []).length > 0);

@@ -1,5 +1,7 @@
+import { API_BASE } from './base.js';
+
 export async function fetchSuggestions(formData) {
-  const res = await fetch('/api/suggestions', {
+  const res = await fetch(`${API_BASE}/api/suggestions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(formData),
@@ -14,7 +16,7 @@ export async function fetchSuggestions(formData) {
 export async function fetchMarketRates() {
   try {
     console.log('[fetchMarketRates] calling /api/market-rates...');
-    const res = await fetch('/api/market-rates');
+    const res = await fetch(`${API_BASE}/api/market-rates`);
     const data = await res.json();
     console.log('[fetchMarketRates] raw response:', data);
     console.log('[fetchMarketRates] spyForwardReturn:', data.marketRates?.spyForwardReturn);
