@@ -13,12 +13,20 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  ...(process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN] : []),
-];
-app.use(cors({ origin: allowedOrigins }));
+app.use(cors({
+  origin(origin, callback) {
+    if (
+      !origin ||
+      origin === 'http://localhost:5173' ||
+      origin === 'https://meridian-iota-seven.vercel.app' ||
+      /^https:\/\/[^.]+\.vercel\.app$/.test(origin)
+    ) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+}));
 app.use(express.json());
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
