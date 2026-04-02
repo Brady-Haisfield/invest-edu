@@ -35,7 +35,6 @@ export default function MetricChip({ value, label, tooltip, variant = 'default' 
           padding: '6px 10px',
           fontSize: 11,
           color: 'var(--text-secondary)',
-          whiteSpace: 'nowrap',
           zIndex: 10,
           maxWidth: 220,
           whiteSpace: 'normal',
