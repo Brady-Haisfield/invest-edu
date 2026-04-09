@@ -438,7 +438,7 @@ export default function App() {
     setTreasuryRates(null);
     setLastInputs(formData);
     try {
-      const { cards: newCards, advisorNarrative: narrative, treasuryRates: rates } = await fetchSuggestions(formData);
+      const { cards: newCards, advisorNarrative: narrative, treasuryRates: rates } = await fetchSuggestions(formData, tokenRef.current);
       const updatedAt = new Date().toISOString();
       setCards(newCards);
       setAdvisorNarrative(narrative);
@@ -578,7 +578,7 @@ export default function App() {
     setForecastStockPE(null);
     setForecastSectorPE(null);
     try {
-      const result = await fetchForecast(ticker);
+      const result = await fetchForecast(ticker, tokenRef.current);
       if (animReadyRef.current) {
         applyResult(result);
       } else {

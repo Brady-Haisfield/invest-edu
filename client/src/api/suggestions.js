@@ -1,9 +1,12 @@
 import { API_BASE } from './base.js';
 
-export async function fetchSuggestions(formData) {
+export async function fetchSuggestions(formData, token) {
   const res = await fetch(`${API_BASE}/api/suggestions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(formData),
   });
   const data = await res.json();
