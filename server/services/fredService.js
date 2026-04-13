@@ -2,9 +2,17 @@ const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 let cachedRates = null;
 let cacheTime = null;
 
-// Shiller CAPE is not available as a FRED series.
-// Using a current hardcoded estimate (updated periodically).
-// As of March 2026, S&P 500 CAPE ≈ 36, dividend yield ≈ 1.3%.
+// ─────────────────────────────────────────────
+// CAPE ESTIMATE — update this manually each quarter
+// Source: https://shillerdata.com or
+//         https://www.multpl.com/shiller-pe
+// Last updated: April 2026 — value: 36
+// Next update due: July 2026
+// Note: FRED does not publish Shiller CAPE as a
+// live series — this hardcoded estimate is
+// intentional. Update when CAPE moves more than
+// 2 points from this value.
+// ─────────────────────────────────────────────
 const CAPE_ESTIMATE   = 36;
 const SP500_DIV_YIELD = 0.013;
 
