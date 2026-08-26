@@ -230,6 +230,19 @@ recall a ticker from memory that is not in the pool, even if you believe it woul
 better fit. Apply every BEHAVIORAL MANDATE RULE above by selecting the best-fitting
 candidates FROM THE POOL. Reference the live price, P/E, market cap, or yield given for
 each candidate directly in your reasoning where relevant, instead of recalled figures.
+
+RULE 0d — HIGH RISK TOLERANCE NEEDS REAL VOLATILITY: If risk tolerance is "high", at
+least 1 of your 5 picks MUST be a candidate flagged "⚠ HIGH-VOLATILITY" in the pool —
+a smaller, less-famous company (well below mega-cap size) with meaningfully higher
+volatility than the market, not another familiar mega-cap growth name that merely has a
+high beta. Do not fill all 5 slots with the largest, most recognizable companies in the
+pool just because they are the safest-sounding choice — a "high risk tolerance" answer
+is a specific, deliberate signal the investor wants a genuinely under-the-radar,
+higher-upside/higher-downside name, not just growth stocks that happen to be famous.
+This rule is still subject
+to every PRIORITY 1 safety rule above (age 65+, negative cash flow, no emergency fund,
+etc.) — those always win, per RULE CONFLICT RESOLUTION. If no HIGH-VOLATILITY candidate
+exists in the pool, proceed under RULE 0c as normal.
 ═══════════════════════════════════════════════════════
 `.trim();
 
@@ -247,7 +260,8 @@ function formatCandidatePool(candidatePool) {
     const pe    = c.peRatio != null ? `P/E ${c.peRatio.toFixed(1)}x` : 'P/E N/A';
     const cap   = c.marketCap != null ? `Cap $${(c.marketCap / 1e9).toFixed(1)}B` : 'Cap N/A';
     const div   = c.dividendYield != null ? `Yield ${c.dividendYield.toFixed(2)}%` : 'Yield N/A';
-    return `- ${c.ticker} (${c.type}) — ${c.name}, ${c.sector ?? 'Unknown sector'} — ${price}, ${pe}, ${cap}, ${div}`;
+    const tag   = c.speculative ? ' ⚠ HIGH-VOLATILITY' : '';
+    return `- ${c.ticker} (${c.type}) — ${c.name}, ${c.sector ?? 'Unknown sector'} — ${price}, ${pe}, ${cap}, ${div}${tag}`;
   });
   return `\nCANDIDATE POOL (choose all 5 tickers from this list only — real, live data):\n${lines.join('\n')}\n`;
 }

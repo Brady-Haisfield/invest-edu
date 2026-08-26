@@ -28,7 +28,15 @@ export const SECTOR_ANCHOR_MAP = {
 };
 
 // Used when the user didn't specify a sector preference — broad spread of growth/defensive.
-const DEFAULT_ANCHORS = ['MSFT', 'UNH', 'AMZN'];
+const DEFAULT_ANCHORS = ['MSFT', 'UNH', 'AMZN', 'JPM'];
+
+// Added on top of sector anchors only when risk tolerance is "high" — chosen because
+// their Finnhub peer lists reliably surface real, smaller/higher-beta companies rather
+// than more mega-caps, regardless of which sector the user picked. Verified directly
+// (biotech, quantum/emerging-tech, semiconductor-equipment sub-industries); a few other
+// candidates tried (RBLX, COIN, SOFI) didn't pan out — COIN's peers are large financial
+// exchanges, RBLX's peer list is mostly unfamiliar/likely-illiquid tickers.
+const HIGH_RISK_ARCHETYPE_ANCHORS = ['MRNA', 'IONQ', 'ENPH'];
 
 // Fixed core instruments already named in claudeService's SYSTEM_PROMPT rules
 // (debt rule -> VGSH, RULE 0b TIPS replacement -> SCHP, renter rule -> VNQ, etc.)
@@ -43,31 +51,51 @@ const CORE_TICKER_TYPES = {
   VNQ:  'reit',
 };
 
-const PEERS_PER_ANCHOR = 6;
-const MAX_ANCHORS       = 6;  // e.g. 3 matched sectors x up to 2 anchors each
-const MAX_POOL_SIZE     = 45; // safety cap on final quote-fetch fanout
+// Finnhub's peer lists are ranked by similarity, not market cap — smaller/newer names
+// often sit near the end (e.g. behind MSFT: ...FTNT, GEN, FROG, PATH, S — the last one,
+// SentinelOne, is far smaller/higher-beta than MSFT itself). PEERS_PER_ANCHOR was 6,
+// which cut the list before reaching those — raised to 8 so genuinely volatile options
+// actually make it into the pool for high-risk-tolerance users instead of only mega-caps.
+const PEERS_PER_ANCHOR = 8;
+const MAX_ANCHORS       = 6;  // sector anchors: e.g. 3 matched sectors x up to 2 anchors each
+const MAX_POOL_SIZE     = 75; // safety cap on final quote-fetch fanout (raised for archetype anchors)
 
-function resolveAnchors(sectors) {
+// No new data source — beta and marketCap are already fetched for every candidate.
+// Market cap is the primary signal for "not very known" (a $5T company with beta 2.2,
+// like NVDA, is extremely famous — flagging it as "speculative" would defeat the point).
+// Beta is a secondary filter to exclude sleepy small-caps that just happen to be small.
+const SPECULATIVE_CAP_MAX  = 30e9; // $30B — below typical mega/large-cap territory
+const SPECULATIVE_BETA_MIN = 1.3;  // still meaningfully more volatile than the market
+
+function resolveSectorAnchors(sectors) {
   if (!sectors || sectors.length === 0) return DEFAULT_ANCHORS;
   const mapped = sectors.slice(0, 3).flatMap((s) => SECTOR_ANCHOR_MAP[s] ?? []);
   const unique = [...new Set(mapped)].slice(0, MAX_ANCHORS);
   return unique.length > 0 ? unique : DEFAULT_ANCHORS;
 }
 
+function resolveAnchors(inputs) {
+  const sectorAnchors = resolveSectorAnchors(inputs?.sectors);
+  if (inputs?.riskProfile !== 'high') return sectorAnchors;
+  return [...new Set([...sectorAnchors, ...HIGH_RISK_ARCHETYPE_ANCHORS])];
+}
+
 // Returns [] on total failure — callers should fall back to unconstrained picking.
 export async function buildCandidatePool(inputs) {
   try {
-    const anchors = resolveAnchors(inputs?.sectors);
+    const anchors = resolveAnchors(inputs);
 
     const peerResults = await Promise.allSettled(anchors.map((a) => getPeers(a)));
 
+    // CORE_TICKERS added first so they're never dropped by the MAX_POOL_SIZE truncation
+    // below — the behavioral rules depend on them (VGSH for debt, SCHP for TIPS, etc.).
     const tickers = new Set();
+    CORE_TICKERS.forEach((t) => tickers.add(t));
     anchors.forEach((a) => tickers.add(a)); // anchors themselves are legitimate candidates
     peerResults.forEach((r) => {
       if (r.status !== 'fulfilled') return;
       r.value.slice(0, PEERS_PER_ANCHOR).forEach((t) => tickers.add(t));
     });
-    CORE_TICKERS.forEach((t) => tickers.add(t));
 
     const tickerList = [...tickers].slice(0, MAX_POOL_SIZE);
     if (tickerList.length === 0) return [];
@@ -82,6 +110,10 @@ export async function buildCandidatePool(inputs) {
         return;
       }
       const q = r.value;
+      const isCore = CORE_TICKER_TYPES[ticker] != null;
+      const speculative = !isCore
+        && q.marketCap != null && q.marketCap < SPECULATIVE_CAP_MAX
+        && (q.beta == null || q.beta >= SPECULATIVE_BETA_MIN);
       pool.push({
         ticker,
         name:          q.name,
@@ -92,10 +124,12 @@ export async function buildCandidatePool(inputs) {
         marketCap:     q.marketCap,
         dividendYield: q.dividendYield,
         beta:          q.beta,
+        speculative,
       });
     });
 
-    console.log(`[candidatePoolService] pool built: ${pool.length} candidates from anchors [${anchors.join(', ')}]`);
+    const specCount = pool.filter((c) => c.speculative).length;
+    console.log(`[candidatePoolService] pool built: ${pool.length} candidates (${specCount} high-volatility) from anchors [${anchors.join(', ')}]`);
     return pool;
   } catch (err) {
     console.warn('[candidatePoolService] pool build failed, will fall back to unconstrained picking:', err.message);
