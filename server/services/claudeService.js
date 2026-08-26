@@ -218,6 +218,21 @@ General rules:
 - advisorNarrative must explicitly name every major BEHAVIORAL MANDATE RULE that fired and explain in plain English how it changed the suggestions. The user must finish reading it and understand exactly why they got these specific picks. Generic summaries ("I balanced growth and income") are not acceptable — name the specific fact that triggered each rule (dollar amounts, ages, ratios). End with one honest caveat.
 `.trim();
 
+// Appended to SYSTEM_PROMPT only when a live candidate pool was successfully built —
+// keeps the unconstrained blind-pick prompt above completely unchanged as a fallback
+// path for when the pool build fails (see buildCandidatePool in candidatePoolService.js).
+const POOL_ONLY_ADDENDUM = `
+═══════════════════════════════════════════════════════
+RULE 0c — CANDIDATE POOL ONLY (ABSOLUTE): A CANDIDATE POOL of real, currently-listed
+tickers with live market data is provided at the end of the user message. You MUST
+choose all 5 suggestions exclusively from that list — never invent, substitute, or
+recall a ticker from memory that is not in the pool, even if you believe it would be a
+better fit. Apply every BEHAVIORAL MANDATE RULE above by selecting the best-fitting
+candidates FROM THE POOL. Reference the live price, P/E, market cap, or yield given for
+each candidate directly in your reasoning where relevant, instead of recalled figures.
+═══════════════════════════════════════════════════════
+`.trim();
+
 const GOAL_MODE_INSTRUCTIONS = {
   'just-starting':          'Investor is just getting started — prefer broad market ETFs, simple blue-chip stocks, and low-complexity options. Avoid niche or speculative picks.',
   'growing-wealth':         'Investor is in wealth-building mode — prefer equities and growth-oriented ETFs with solid fundamentals. Some diversification is welcome.',
@@ -225,7 +240,19 @@ const GOAL_MODE_INSTRUCTIONS = {
   'already-retired':        'Investor is already retired — prioritize capital preservation and income. Bonds, dividend ETFs, and REITs are ideal. Avoid growth stocks and speculative assets.',
 };
 
-function buildUserPrompt(inputs) {
+function formatCandidatePool(candidatePool) {
+  if (!candidatePool || candidatePool.length === 0) return '';
+  const lines = candidatePool.map((c) => {
+    const price = c.price != null ? `$${c.price.toFixed(2)}` : 'price N/A';
+    const pe    = c.peRatio != null ? `P/E ${c.peRatio.toFixed(1)}x` : 'P/E N/A';
+    const cap   = c.marketCap != null ? `Cap $${(c.marketCap / 1e9).toFixed(1)}B` : 'Cap N/A';
+    const div   = c.dividendYield != null ? `Yield ${c.dividendYield.toFixed(2)}%` : 'Yield N/A';
+    return `- ${c.ticker} (${c.type}) — ${c.name}, ${c.sector ?? 'Unknown sector'} — ${price}, ${pe}, ${cap}, ${div}`;
+  });
+  return `\nCANDIDATE POOL (choose all 5 tickers from this list only — real, live data):\n${lines.join('\n')}\n`;
+}
+
+function buildUserPrompt(inputs, candidatePool) {
   const retirementNote = (inputs.riskProfile === 'low' || inputs.holdPeriod === 'short')
     ? 'Note: This investor prefers lower risk or a shorter horizon — lean toward capital preservation. Include at least 2 ETFs, bond ETFs, or REITs.'
     : '';
@@ -379,6 +406,7 @@ ${retirementNote ? retirementNote + '\n' : ''}
 Use ALL of the above profile details to personalize every suggestion. Reference specific profile facts in the reasoning field — for example mention the college tuition timeline, the income bracket, the drop reaction, or the family situation where relevant.
 ${deepSection}
 ${calcSection}
+${formatCandidatePool(candidatePool)}
 Suggest 5 educational investment examples for this profile. Respond with JSON array only.
 `.trim();
 }
@@ -528,17 +556,23 @@ export async function getForecast(stockData) {
   return parsed;
 }
 
-export async function getSuggestions(inputs) {
+// Known mutual fund ticker prefixes / patterns — not exchange-traded, Finnhub can't price them
+const MUTUAL_FUND_RE = /^(VFIAX|VTSAX|VTIAX|VBTLX|FXAIX|FSPGX|FZILX|FBALX|FDVV|FZROX|FZIPX|FZILX|FXNAX|FNILX)/;
+// 5-letter tickers ending in X are usually mutual funds (ETFs are typically 3-4 letters)
+const LIKELY_MUTUAL_FUND_RE = /^[A-Z]{5}X$/;
+// Tickers that resolve to the wrong security (e.g. ambiguous or misidentified)
+const BLOCKED_TICKERS = new Set(['TIPS']); // TIPS = Chinese company, not inflation ETF; use TIP or SCHP
+const TICKER_RE = /^[A-Z]{1,5}$/;
+
+async function callClaudeForSuggestions(system, userPrompt) {
   const message = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2048,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: buildUserPrompt(inputs) }],
+    system,
+    messages: [{ role: 'user', content: userPrompt }],
   });
 
   const raw = message.content[0].text.trim();
-
-  // Strip markdown fences if present
   const cleaned = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
 
   let parsed;
@@ -557,37 +591,29 @@ export async function getSuggestions(inputs) {
   }
 
   const advisorNarrative = typeof parsed.advisorNarrative === 'string' ? parsed.advisorNarrative.trim() : '';
+  return { advisorNarrative, rawSuggestions: parsed.suggestions };
+}
 
-  // Known mutual fund ticker prefixes / patterns — not exchange-traded, Finnhub can't price them
-  const MUTUAL_FUND_RE = /^(VFIAX|VTSAX|VTIAX|VBTLX|FXAIX|FSPGX|FZILX|FBALX|FDVV|FZROX|FZIPX|FZILX|FXNAX|FNILX)/;
-  // 5-letter tickers ending in X are usually mutual funds (ETFs are typically 3-4 letters)
-  const LIKELY_MUTUAL_FUND_RE = /^[A-Z]{5}X$/;
-  // Tickers that resolve to the wrong security (e.g. ambiguous or misidentified)
-  const BLOCKED_TICKERS = new Set(['TIPS']); // TIPS = Chinese company, not inflation ETF; use TIP or SCHP
-
-  // Validate and filter to well-formed suggestions
-  const TICKER_RE = /^[A-Z]{1,5}$/;
-  const suggestions = parsed.suggestions
-    .filter(
-      (s) => {
-        if (!s || typeof s.ticker !== 'string') return false;
-        if (!TICKER_RE.test(s.ticker)) return false;
-        if (typeof s.reasoning !== 'string' || s.reasoning.length === 0) return false;
-        if (MUTUAL_FUND_RE.test(s.ticker)) {
-          console.warn(`[claudeService] Filtered mutual fund ticker: ${s.ticker}`);
-          return false;
-        }
-        if (LIKELY_MUTUAL_FUND_RE.test(s.ticker)) {
-          console.warn(`[claudeService] Filtered likely mutual fund ticker: ${s.ticker}`);
-          return false;
-        }
-        if (BLOCKED_TICKERS.has(s.ticker)) {
-          console.warn(`[claudeService] Filtered blocked ticker: ${s.ticker}`);
-          return false;
-        }
-        return true;
+function filterSuggestions(rawSuggestions) {
+  return rawSuggestions
+    .filter((s) => {
+      if (!s || typeof s.ticker !== 'string') return false;
+      if (!TICKER_RE.test(s.ticker)) return false;
+      if (typeof s.reasoning !== 'string' || s.reasoning.length === 0) return false;
+      if (MUTUAL_FUND_RE.test(s.ticker)) {
+        console.warn(`[claudeService] Filtered mutual fund ticker: ${s.ticker}`);
+        return false;
       }
-    )
+      if (LIKELY_MUTUAL_FUND_RE.test(s.ticker)) {
+        console.warn(`[claudeService] Filtered likely mutual fund ticker: ${s.ticker}`);
+        return false;
+      }
+      if (BLOCKED_TICKERS.has(s.ticker)) {
+        console.warn(`[claudeService] Filtered blocked ticker: ${s.ticker}`);
+        return false;
+      }
+      return true;
+    })
     .map((s) => ({
       ticker: s.ticker,
       type: s.type || 'stock',
@@ -596,6 +622,61 @@ export async function getSuggestions(inputs) {
       retirementLens: s.retirementLens || null,
       watchOut: s.watchOut || null,
     }));
+}
 
-  return { advisorNarrative, suggestions };
+function backfillFromPool(suggestions, candidatePool) {
+  const used = new Set(suggestions.map((s) => s.ticker));
+  for (const c of candidatePool) {
+    if (suggestions.length >= 5) break;
+    if (used.has(c.ticker)) continue;
+    suggestions.push({
+      ticker: c.ticker,
+      type: c.type,
+      reasoning: `Included from your vetted candidate pool to complete your 5 suggestions (${c.sector ?? 'diversified'} exposure).`,
+      portfolioRole: null,
+      retirementLens: null,
+      watchOut: null,
+    });
+    used.add(c.ticker);
+  }
+  return suggestions;
+}
+
+export async function getSuggestions(inputs, candidatePool = []) {
+  const poolTickers = new Set(candidatePool.map((c) => c.ticker));
+  const system = poolTickers.size > 0 ? `${SYSTEM_PROMPT}\n\n${POOL_ONLY_ADDENDUM}` : SYSTEM_PROMPT;
+  const userPrompt = buildUserPrompt(inputs, candidatePool);
+
+  const first = await callClaudeForSuggestions(system, userPrompt);
+  let advisorNarrative = first.advisorNarrative;
+  let suggestions = filterSuggestions(first.rawSuggestions);
+
+  if (poolTickers.size > 0) {
+    const invalid = suggestions.filter((s) => !poolTickers.has(s.ticker)).map((s) => s.ticker);
+    suggestions = suggestions.filter((s) => poolTickers.has(s.ticker));
+
+    if (suggestions.length < 5 && invalid.length > 0) {
+      console.warn(`[claudeService] ${invalid.length} pick(s) not in candidate pool (${invalid.join(', ')}) — retrying once`);
+      const retryPrompt = `${userPrompt}\n\nCORRECTION: Your previous response included tickers not in the CANDIDATE POOL (${invalid.join(', ')}). You MUST choose all 5 tickers exclusively from the CANDIDATE POOL list above, using their real data.`;
+      try {
+        const retry = await callClaudeForSuggestions(system, retryPrompt);
+        const retrySuggestions = filterSuggestions(retry.rawSuggestions).filter((s) => poolTickers.has(s.ticker));
+        const seen = new Set(suggestions.map((s) => s.ticker));
+        for (const s of retrySuggestions) {
+          if (suggestions.length >= 5) break;
+          if (!seen.has(s.ticker)) { suggestions.push(s); seen.add(s.ticker); }
+        }
+        if (retry.advisorNarrative) advisorNarrative = retry.advisorNarrative;
+      } catch (err) {
+        console.warn('[claudeService] retry call failed, will backfill from pool instead:', err.message);
+      }
+    }
+
+    if (suggestions.length < 5) {
+      console.warn(`[claudeService] backfilling ${5 - suggestions.length} pick(s) from candidate pool after retry`);
+      suggestions = backfillFromPool(suggestions, candidatePool);
+    }
+  }
+
+  return { advisorNarrative, suggestions: suggestions.slice(0, 5) };
 }

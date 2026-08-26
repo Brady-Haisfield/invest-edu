@@ -3,6 +3,7 @@ import { validateInputs } from '../utils/validators.js';
 import { getSuggestions } from '../services/claudeService.js';
 import { getQuote } from '../services/finnhubService.js';
 import { getTreasuryRates } from '../services/fredService.js';
+import { buildCandidatePool } from '../services/candidatePoolService.js';
 import { getAnalystData, getETFInfo, getPriceTarget, getAnalystSentiment, getETFHoldings } from '../services/fmpService.js';
 import { getOverview, getNewsSentiment } from '../services/alphaService.js';
 
@@ -16,15 +17,19 @@ router.post('/', async (req, res, next) => {
   try {
     const inputs = validateInputs(req.body);
 
-    // Fetch suggestions and treasury rates in parallel
-    const [suggestionsResult, treasuryResult] = await Promise.allSettled([
-      getSuggestions(inputs),
+    // Build the live candidate pool (sector ETF holdings + core tickers, real data
+    // attached) and fetch treasury rates in parallel. buildCandidatePool never throws —
+    // it resolves to [] on failure, and getSuggestions falls back to unconstrained
+    // picking when the pool is empty.
+    const [candidatePoolResult, treasuryResult] = await Promise.allSettled([
+      buildCandidatePool(inputs),
       getTreasuryRates(),
     ]);
 
-    if (suggestionsResult.status === 'rejected') throw suggestionsResult.reason;
-    const { advisorNarrative, suggestions } = suggestionsResult.value;
+    const candidatePool = candidatePoolResult.status === 'fulfilled' ? candidatePoolResult.value : [];
     const treasuryRates = treasuryResult.status === 'fulfilled' ? treasuryResult.value : null;
+
+    const { advisorNarrative, suggestions } = await getSuggestions(inputs, candidatePool);
 
     if (suggestions.length === 0) {
       const err = new Error('AI did not return any valid stock suggestions. Please try again.');

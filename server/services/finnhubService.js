@@ -2,6 +2,11 @@
 
 const BASE = 'https://finnhub.io/api/v1';
 
+// Short cache — candidate-pool screening can request the same popular tickers
+// repeatedly across users; prices don't need to be fresher than this for that purpose.
+const QUOTE_CACHE_TTL = 10 * 60 * 1000;
+const quoteCache = new Map(); // ticker -> { data, time }
+
 function finnhubFetch(path) {
   const key = process.env.FINNHUB_API_KEY;
   return fetch(`${BASE}${path}&token=${key}`).then((r) => r.json());
@@ -41,7 +46,28 @@ function extractFFO(financials) {
   return netIncome + depreciation;
 }
 
+// Same-sub-industry peer tickers for a seed ticker — used by candidatePoolService.js
+// to source real, live candidates (FMP's ETF-holdings endpoint isn't available on this
+// account's plan, confirmed via direct testing: 402/404 on every holdings path tried).
+export async function getPeers(ticker) {
+  try {
+    const peers = await finnhubFetch(`/stock/peers?symbol=${ticker}`);
+    return Array.isArray(peers) ? peers.filter((p) => typeof p === 'string' && /^[A-Z]{1,5}$/.test(p)) : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function getQuote(ticker) {
+  const hit = quoteCache.get(ticker);
+  if (hit && Date.now() - hit.time < QUOTE_CACHE_TTL) return hit.data;
+
+  const data = await fetchQuote(ticker);
+  quoteCache.set(ticker, { data, time: Date.now() });
+  return data;
+}
+
+async function fetchQuote(ticker) {
   const [quote, profile, metricResult] = await Promise.allSettled([
     finnhubFetch(`/quote?symbol=${ticker}`),
     finnhubFetch(`/stock/profile2?symbol=${ticker}`),
