@@ -82,3 +82,26 @@ create policy "portfolio_holdings_delete_own" on public.portfolio_holdings
 -- Note: the server always queries via the service-role key (services/supabase.js),
 -- which bypasses RLS. These policies are the defense-in-depth layer SCHEMA_AUDIT.md
 -- recommended, in case any client-side query is ever added later.
+
+-- ── market_universe ─────────────────────────────────────────────────────────
+-- Broad, pre-computed candidate universe for the suggestions feature, populated by a
+-- background job (server/jobs/universeRefreshJob.js) that seeds every US-listed
+-- common stock/ETF/REIT from Finnhub's bulk symbol list, then rolls through refreshing
+-- fundamentals a batch at a time (respecting Finnhub's free-tier rate limit) so live
+-- suggestion requests can query a large, real universe instead of doing live API calls.
+-- No RLS — server-only table, accessed exclusively via the service-role key.
+create table public.market_universe (
+  ticker          text primary key,
+  name            text not null,
+  type            text not null,  -- 'stock' | 'etf' | 'reit'
+  sector          text,           -- null until fundamentals are fetched
+  price           numeric,
+  pe_ratio        numeric,
+  market_cap      numeric,
+  dividend_yield  numeric,
+  beta            numeric,
+  updated_at      timestamptz     -- null = seed row, fundamentals never fetched yet
+);
+
+create index market_universe_updated_at_idx on public.market_universe(updated_at nulls first);
+create index market_universe_type_sector_idx on public.market_universe(type, sector);

@@ -7,6 +7,8 @@ import searchRouter from './routes/search.js';
 import authRouter from './routes/auth.js';
 import marketRatesRouter from './routes/marketRates.js';
 import { requireAuth } from './middleware/auth.js';
+import { startUniverseRefreshJob } from './jobs/universeRefreshJob.js';
+import { refreshBatch } from './services/universeService.js';
 
 dotenv.config();
 
@@ -31,6 +33,18 @@ app.use(express.json());
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
+// Dev-only manual trigger for the universe refresh job — lets testing see progress
+// immediately instead of waiting on the 2-minute interval. No auth, matches the
+// existing /api/test-apis precedent of an unauthenticated dev diagnostic route.
+app.post('/api/admin/universe/refresh-now', async (req, res, next) => {
+  try {
+    const result = await refreshBatch(Number(req.query.n) || 15);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.use('/api/suggestions', requireAuth, suggestionsRouter);
 app.use('/api/forecast', requireAuth, forecastRouter);
 app.use('/api/search', searchRouter);
@@ -45,4 +59,5 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  startUniverseRefreshJob();
 });

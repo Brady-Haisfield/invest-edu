@@ -47,6 +47,13 @@ function formatPE(n) {
   return n.toFixed(1) + 'x';
 }
 
+function formatDisclosureDate(iso) {
+  if (!iso) return 'unknown date';
+  try {
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch { return 'unknown date'; }
+}
+
 function RangeBar({ low, high, price }) {
   if (low == null || high == null || price == null || high === low) return null;
   const pct = Math.min(100, Math.max(0, ((price - low) / (high - low)) * 100));
@@ -123,7 +130,7 @@ const CONSENSUS_STYLE = {
 
 export default function StockCard({ card, equalProjection, user, isInPortfolio, onAddToPortfolio }) {
   const { ticker, name, price, fiftyTwoWeekLow, fiftyTwoWeekHigh, peRatio, marketCap, sector, reasoning, type, portfolioRole, retirementLens, watchOut, expenseRatio,
-    analystConsensus, newsSentimentScore, newsSentimentLabel, priceTargetConsensus } = card;
+    analystConsensus, newsSentimentScore, newsSentimentLabel, priceTargetConsensus, congressTrading } = card;
   const [lensOpen, setLensOpen] = useState(false);
   const [hoveredStat, setHoveredStat] = useState(null);
 
@@ -351,6 +358,24 @@ export default function StockCard({ card, equalProjection, user, isInPortfolio, 
         }}>
           <span style={{ color: 'var(--accent-red)', fontSize: 11, flexShrink: 0, marginTop: 1 }}>⚠</span>
           <span style={{ fontSize: 11, color: 'var(--accent-red)', lineHeight: 1.5 }}>{watchOut}</span>
+        </div>
+      )}
+
+      {/* Congressional trading disclosures — factual public record, not a signal */}
+      {congressTrading && (
+        <div style={{
+          background: 'var(--bg-input)',
+          border: '1px solid var(--border-2)',
+          borderRadius: 'var(--radius-sm)',
+          padding: 'var(--space-2) var(--space-3)',
+          fontSize: 10.5, color: 'var(--text-muted)', lineHeight: 1.5,
+        }}>
+          {congressTrading.tradeCount} congressional trade{congressTrading.tradeCount !== 1 ? 's' : ''} disclosed in the past year
+          {congressTrading.mostRecent?.filerName && (
+            <> · most recent: {congressTrading.mostRecent.type?.startsWith('Sale') ? 'Sale' : congressTrading.mostRecent.type?.startsWith('Purchase') ? 'Purchase' : congressTrading.mostRecent.type ?? 'Trade'} by {congressTrading.mostRecent.filerName}
+            {congressTrading.mostRecent.daysToFile != null && `, filed ${congressTrading.mostRecent.daysToFile}d after the trade`}
+            {' '}({formatDisclosureDate(congressTrading.mostRecent.date)})</>
+          )}
         </div>
       )}
 

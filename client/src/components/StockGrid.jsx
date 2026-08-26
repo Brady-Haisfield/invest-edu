@@ -30,9 +30,9 @@ const BUCKETS = [
 const HOLD_LABELS = { short: '< 1 year hold', medium: '1–5 year hold', long: '5+ year hold' };
 const HOLD_YEARS  = { short: 2, medium: 5, long: 10 };
 
-function calcEqualProjection(card, inputs, treasuryRates) {
+function calcEqualProjection(card, inputs, treasuryRates, cardCount) {
   if (!inputs?.amount || !inputs?.holdPeriod) return null;
-  const n = 5; // always 5 cards
+  const n = cardCount;
   const amount = Math.floor(inputs.amount / n);
   const holdYears = HOLD_YEARS[inputs.holdPeriod] ?? 10;
   const conservative = inputs.goalMode === 'approaching-retirement' || inputs.goalMode === 'already-retired';
@@ -464,7 +464,7 @@ export default function StockGrid({ cards, inputs, advisorNarrative, treasuryRat
           <StockCard
             key={card.ticker}
             card={card}
-            equalProjection={calcEqualProjection(card, inputs, treasuryRates)}
+            equalProjection={calcEqualProjection(card, inputs, treasuryRates, cards.length)}
             user={user}
             isInPortfolio={portfolioTickers ? portfolioTickers.has(card.ticker) : false}
             onAddToPortfolio={onAddToPortfolio}

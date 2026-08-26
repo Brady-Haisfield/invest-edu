@@ -6,6 +6,11 @@ function getClient() {
   return client;
 }
 
+// Single source of truth for how many suggestions to generate — was hardcoded to 5
+// in a dozen places across the prompt and validation logic; the client (StockGrid.jsx)
+// already renders however many cards come back, so this is the only number that matters.
+export const SUGGESTION_COUNT = 8;
+
 const SYSTEM_PROMPT = `
 You are a financial education assistant. Your role is to help users learn about investing concepts
 by suggesting example stocks, ETFs, bond ETFs, and REITs that illustrate principles relevant to
@@ -112,9 +117,9 @@ Under 30: MANDATE at least 3 growth-oriented holdings (broad ETFs or growth stoc
 ── PENSION + SOCIAL SECURITY INCOME RULES ────────────
 Use the pre-computed "Monthly income gap" from CALCULATED FIELDS (below in the user prompt).
 If income gap <= 0 (guaranteed income COVERS all expenses):
-  MANDATE: At least 3 of 5 must be growth-oriented (broad market ETFs, growth stocks, balanced ETFs). Maximum 1 bond ETF. Do NOT prioritize income-generating holdings.
+  MANDATE: At least 3 of ${SUGGESTION_COUNT} must be growth-oriented (broad market ETFs, growth stocks, balanced ETFs). Maximum 1 bond ETF. Do NOT prioritize income-generating holdings.
 If income gap > $1,000/month (significant gap):
-  MANDATE: At least 3 of 5 must be income-generating (dividend ETFs, bond ETFs, REITs, dividend stocks with yield > 2%). Maximum 1 pure growth holding with no dividend.
+  MANDATE: At least 3 of ${SUGGESTION_COUNT} must be income-generating (dividend ETFs, bond ETFs, REITs, dividend stocks with yield > 2%). Maximum 1 pure growth holding with no dividend.
 If income gap > $0 and <= $1,000/month (small gap):
   Include exactly 2 income-generating holdings, 2 growth holdings, and 1 flexible holding.
 If no pension/SS data: Do not apply this rule — fall through to risk tolerance defaults.
@@ -155,7 +160,7 @@ If surplus (including pension/SS) > $2,000:
 
 ── INVESTMENT EXPERIENCE RULES ──────────────────────
 New to investing:
-  MANDATE: Maximum 1 individual stock in the 5 suggestions. The remaining 4 must be broad, simple ETFs (e.g. VTI, SCHD, BND). No sector ETFs, no leveraged ETFs, no complex instruments. Use extra plain language in ALL reasoning fields.
+  MANDATE: Maximum 1 individual stock in the ${SUGGESTION_COUNT} suggestions. The remaining ${SUGGESTION_COUNT - 1} must be broad, simple ETFs (e.g. VTI, SCHD, BND). No sector ETFs, no leveraged ETFs, no complex instruments. Use extra plain language in ALL reasoning fields.
 Some experience:
   Maximum 2 individual stocks. At least 2 broad market ETFs. Sector ETFs are acceptable.
 Experienced investor:
@@ -196,7 +201,7 @@ approaching-retirement: Bias strongly toward income, stability, bond ETFs, divid
 already-retired: MANDATE at least 3 capital-preservation or income holdings. No growth stocks or speculative assets.
 
 ── SECTOR INTEREST RULES ────────────────────────────
-If sectors are specified: At least 2 of 5 suggestions must directly match a stated sector. Do not ignore stated sector interests.
+If sectors are specified: At least 2 of ${SUGGESTION_COUNT} suggestions must directly match a stated sector. Do not ignore stated sector interests.
 If no sectors specified: Vary suggestions across at least 3 different sectors.
 If themes of interest are specified: At least 1 suggestion must align with a stated theme (e.g. AI/tech, clean energy, healthcare).
 
@@ -225,17 +230,17 @@ const POOL_ONLY_ADDENDUM = `
 ═══════════════════════════════════════════════════════
 RULE 0c — CANDIDATE POOL ONLY (ABSOLUTE): A CANDIDATE POOL of real, currently-listed
 tickers with live market data is provided at the end of the user message. You MUST
-choose all 5 suggestions exclusively from that list — never invent, substitute, or
+choose all ${SUGGESTION_COUNT} suggestions exclusively from that list — never invent, substitute, or
 recall a ticker from memory that is not in the pool, even if you believe it would be a
 better fit. Apply every BEHAVIORAL MANDATE RULE above by selecting the best-fitting
 candidates FROM THE POOL. Reference the live price, P/E, market cap, or yield given for
 each candidate directly in your reasoning where relevant, instead of recalled figures.
 
 RULE 0d — HIGH RISK TOLERANCE NEEDS REAL VOLATILITY: If risk tolerance is "high", at
-least 1 of your 5 picks MUST be a candidate flagged "⚠ HIGH-VOLATILITY" in the pool —
+least 1 of your ${SUGGESTION_COUNT} picks MUST be a candidate flagged "⚠ HIGH-VOLATILITY" in the pool —
 a smaller, less-famous company (well below mega-cap size) with meaningfully higher
 volatility than the market, not another familiar mega-cap growth name that merely has a
-high beta. Do not fill all 5 slots with the largest, most recognizable companies in the
+high beta. Do not fill all ${SUGGESTION_COUNT} slots with the largest, most recognizable companies in the
 pool just because they are the safest-sounding choice — a "high risk tolerance" answer
 is a specific, deliberate signal the investor wants a genuinely under-the-radar,
 higher-upside/higher-downside name, not just growth stocks that happen to be famous.
@@ -263,7 +268,7 @@ function formatCandidatePool(candidatePool) {
     const tag   = c.speculative ? ' ⚠ HIGH-VOLATILITY' : '';
     return `- ${c.ticker} (${c.type}) — ${c.name}, ${c.sector ?? 'Unknown sector'} — ${price}, ${pe}, ${cap}, ${div}${tag}`;
   });
-  return `\nCANDIDATE POOL (choose all 5 tickers from this list only — real, live data):\n${lines.join('\n')}\n`;
+  return `\nCANDIDATE POOL (choose all ${SUGGESTION_COUNT} tickers from this list only — real, live data):\n${lines.join('\n')}\n`;
 }
 
 function buildUserPrompt(inputs, candidatePool) {
@@ -421,7 +426,7 @@ Use ALL of the above profile details to personalize every suggestion. Reference 
 ${deepSection}
 ${calcSection}
 ${formatCandidatePool(candidatePool)}
-Suggest 5 educational investment examples for this profile. Respond with JSON array only.
+Suggest ${SUGGESTION_COUNT} educational investment examples for this profile. Respond with JSON array only.
 `.trim();
 }
 
@@ -581,7 +586,11 @@ const TICKER_RE = /^[A-Z]{1,5}$/;
 async function callClaudeForSuggestions(system, userPrompt) {
   const message = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 2048,
+    // Scaled from the original 2048 (which was sized for 5 suggestions) — each
+    // suggestion carries a reasoning, retirementLens, portfolioRole, and watchOut field,
+    // so token need scales with SUGGESTION_COUNT. Generous headroom to avoid truncated
+    // JSON, which is what caused an "AI response was not valid JSON" failure at 8.
+    max_tokens: 1024 + SUGGESTION_COUNT * 350,
     system,
     messages: [{ role: 'user', content: userPrompt }],
   });
@@ -641,12 +650,12 @@ function filterSuggestions(rawSuggestions) {
 function backfillFromPool(suggestions, candidatePool) {
   const used = new Set(suggestions.map((s) => s.ticker));
   for (const c of candidatePool) {
-    if (suggestions.length >= 5) break;
+    if (suggestions.length >= SUGGESTION_COUNT) break;
     if (used.has(c.ticker)) continue;
     suggestions.push({
       ticker: c.ticker,
       type: c.type,
-      reasoning: `Included from your vetted candidate pool to complete your 5 suggestions (${c.sector ?? 'diversified'} exposure).`,
+      reasoning: `Included from your vetted candidate pool to complete your ${SUGGESTION_COUNT} suggestions (${c.sector ?? 'diversified'} exposure).`,
       portfolioRole: null,
       retirementLens: null,
       watchOut: null,
@@ -669,15 +678,15 @@ export async function getSuggestions(inputs, candidatePool = []) {
     const invalid = suggestions.filter((s) => !poolTickers.has(s.ticker)).map((s) => s.ticker);
     suggestions = suggestions.filter((s) => poolTickers.has(s.ticker));
 
-    if (suggestions.length < 5 && invalid.length > 0) {
+    if (suggestions.length < SUGGESTION_COUNT && invalid.length > 0) {
       console.warn(`[claudeService] ${invalid.length} pick(s) not in candidate pool (${invalid.join(', ')}) — retrying once`);
-      const retryPrompt = `${userPrompt}\n\nCORRECTION: Your previous response included tickers not in the CANDIDATE POOL (${invalid.join(', ')}). You MUST choose all 5 tickers exclusively from the CANDIDATE POOL list above, using their real data.`;
+      const retryPrompt = `${userPrompt}\n\nCORRECTION: Your previous response included tickers not in the CANDIDATE POOL (${invalid.join(', ')}). You MUST choose all ${SUGGESTION_COUNT} tickers exclusively from the CANDIDATE POOL list above, using their real data.`;
       try {
         const retry = await callClaudeForSuggestions(system, retryPrompt);
         const retrySuggestions = filterSuggestions(retry.rawSuggestions).filter((s) => poolTickers.has(s.ticker));
         const seen = new Set(suggestions.map((s) => s.ticker));
         for (const s of retrySuggestions) {
-          if (suggestions.length >= 5) break;
+          if (suggestions.length >= SUGGESTION_COUNT) break;
           if (!seen.has(s.ticker)) { suggestions.push(s); seen.add(s.ticker); }
         }
         if (retry.advisorNarrative) advisorNarrative = retry.advisorNarrative;
@@ -686,11 +695,11 @@ export async function getSuggestions(inputs, candidatePool = []) {
       }
     }
 
-    if (suggestions.length < 5) {
-      console.warn(`[claudeService] backfilling ${5 - suggestions.length} pick(s) from candidate pool after retry`);
+    if (suggestions.length < SUGGESTION_COUNT) {
+      console.warn(`[claudeService] backfilling ${SUGGESTION_COUNT - suggestions.length} pick(s) from candidate pool after retry`);
       suggestions = backfillFromPool(suggestions, candidatePool);
     }
   }
 
-  return { advisorNarrative, suggestions: suggestions.slice(0, 5) };
+  return { advisorNarrative, suggestions: suggestions.slice(0, SUGGESTION_COUNT) };
 }

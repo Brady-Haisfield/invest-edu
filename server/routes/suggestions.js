@@ -6,6 +6,7 @@ import { getTreasuryRates } from '../services/fredService.js';
 import { buildCandidatePool } from '../services/candidatePoolService.js';
 import { getAnalystData, getETFInfo, getPriceTarget, getAnalystSentiment, getETFHoldings } from '../services/fmpService.js';
 import { getOverview, getNewsSentiment } from '../services/alphaService.js';
+import { getRecentDisclosures } from '../services/congressTradingService.js';
 
 const router = Router();
 
@@ -88,7 +89,7 @@ router.post('/', async (req, res, next) => {
     );
 
     // ── Layer 4: analyst enrichment (stocks) + holdings/news (ETFs/REITs) ─────
-    const [ptResults, sentimentResults, newsResults, holdingsResults] = await Promise.all([
+    const [ptResults, sentimentResults, newsResults, holdingsResults, congressResults] = await Promise.all([
       // Price targets: stocks and REITs
       Promise.allSettled(baseCards.map((c) =>
         (c.type === 'stock' || c.type === 'reit') ? getPriceTarget(c.ticker) : Promise.resolve(null)
@@ -103,6 +104,10 @@ router.post('/', async (req, res, next) => {
       Promise.allSettled(baseCards.map((c) =>
         (c.type === 'etf' || c.type === 'bond_etf') ? getETFHoldings(c.ticker) : Promise.resolve(null)
       )),
+      // Congressional trading disclosures — factual annotation only, runs after Claude has
+      // already picked; never influences selection. All card types (public figures trade
+      // ETFs and REITs too).
+      Promise.allSettled(baseCards.map((c) => getRecentDisclosures(c.ticker))),
     ]);
 
     // ── Layer 4b: for ETFs with holdings, fetch price targets + quotes ────────
@@ -143,6 +148,7 @@ router.post('/', async (req, res, next) => {
       const sentimentData      = sentimentResults[i].status        === 'fulfilled' ? sentimentResults[i].value        : null;
       const newsData           = newsResults[i].status             === 'fulfilled' ? newsResults[i].value             : null;
       const etfHoldingsReturn  = etfHoldingsReturnResults[i].status === 'fulfilled' ? etfHoldingsReturnResults[i].value : null;
+      const congressData      = congressResults[i].status          === 'fulfilled' ? congressResults[i].value          : null;
 
       // Enrich with FMP
       const enriched = { ...card };
@@ -196,6 +202,11 @@ router.post('/', async (req, res, next) => {
       // Average duration from ETF info (bond ETFs)
       if (fmpData?.averageDuration != null) {
         enriched.averageDuration = fmpData.averageDuration;
+      }
+
+      // Congressional trading disclosures — public record, factual only
+      if (congressData) {
+        enriched.congressTrading = congressData;
       }
 
       return enriched;
