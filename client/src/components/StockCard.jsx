@@ -435,6 +435,11 @@ export default function StockCard({ card, equalProjection, user, isInPortfolio, 
             <span style={{ color: 'var(--accent-green-bright)' }}>~${equalProjection.income.toLocaleString()}/yr</span>
             {' '}income
           </p>
+          {equalProjection.pessimistic != null && equalProjection.optimistic != null && (
+            <p style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace", margin: '4px 0 0', lineHeight: 1.5 }}>
+              Simulated range (80% of outcomes): ${equalProjection.pessimistic.toLocaleString()} – ${equalProjection.optimistic.toLocaleString()}
+            </p>
+          )}
           {type === 'stock' && priceTargetConsensus != null && price != null && (() => {
             const pct = ((priceTargetConsensus - price) / price * 100);
             const isUp = pct >= 0;

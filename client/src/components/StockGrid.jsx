@@ -37,7 +37,10 @@ function calcEqualProjection(card, inputs, treasuryRates, cardCount) {
   const holdYears = HOLD_YEARS[inputs.holdPeriod] ?? 10;
   const conservative = inputs.goalMode === 'approaching-retirement' || inputs.goalMode === 'already-retired';
   const result = calcProjection({ ...card, _allocatedAmount: amount }, holdYears, conservative, treasuryRates);
-  return { amount, projected: result.baseValue, income: result.annualIncome, holdYears };
+  return {
+    amount, projected: result.baseValue, income: result.annualIncome, holdYears,
+    pessimistic: result.pessimisticValue, optimistic: result.optimisticValue,
+  };
 }
 
 const INCOME_MIDPOINTS = {

@@ -1,5 +1,95 @@
-const MARKET_PREMIUM  = 0.055;  // Long-run US equity risk premium
-const MARKET_LONG_RUN = 0.098;  // S&P 500 long-run nominal average
+const MARKET_LONG_RUN = 0.098;  // S&P 500 long-run nominal average — used only when
+                                 // treasuryRates is entirely unavailable (e.g. FRED down)
+const FALLBACK_RISK_FREE = 0.043; // static fallback when live 10-yr yield is unavailable
+
+// Shared CAPM: risk-free rate + beta x (market return - risk-free rate).
+// Both legs now use live data when available instead of static assumptions:
+// - risk-free rate: live 10-year Treasury yield (treasuryRates.tenYear)
+// - market return: live CAPE-derived S&P 500 forward return (treasuryRates.spyForwardReturn,
+//   computed in fredService.js from the current Shiller CAPE ratio) instead of a fixed
+//   historical average — this makes the implied equity risk premium responsive to today's
+//   valuations rather than a constant 5.5%.
+// Previously this gated out any beta >= 3 and fell back to a flat market-average return —
+// which meant the highest-beta stocks (the ones a high-risk-tolerance profile is most
+// likely to be shown) had their risk/return profile silently averaged away instead of
+// actually priced in. Raised to a generous beta <= 6 sanity bound (guards against garbage
+// data, e.g. a data error producing beta=50 on a thin-volume ticker) rather than excluding
+// genuinely volatile real companies.
+function calcCapmReturn(beta, treasuryRates) {
+  const riskFree     = treasuryRates?.tenYear         ?? FALLBACK_RISK_FREE;
+  const marketReturn = treasuryRates?.spyForwardReturn ?? MARKET_LONG_RUN;
+  if (isValid(beta) && beta > 0) {
+    // Clamp rather than exclude above the sanity bound — must match the same clamp
+    // estimateAnnualVol uses below. Excluding beta entirely above the bound while
+    // estimateAnnualVol kept scaling volatility up to it created a discontinuity: a
+    // beta of 6.5 fell back to a flat market-rate return (low mu) while still getting
+    // beta=6-level volatility (high sigma), which paradoxically produced a *narrower*
+    // simulated range than beta 3.87 — found via direct testing across a beta sweep.
+    return riskFree + Math.min(beta, 6) * (marketReturn - riskFree);
+  }
+  // No valid beta — use the live market return estimate directly rather than a flat constant.
+  return marketReturn;
+}
+
+// ─── Monte Carlo range ──────────────────────────────────────────────────────
+// Replaces the old fixed ±35%/65% (or analyst-high/low) multiplier for the
+// pessimistic/optimistic scenario with an actual simulated distribution, driven by each
+// security's own estimated volatility — the same approach robo-advisors (Schwab, etc.)
+// use to show a real "better/average/worse" spread instead of one arbitrary number.
+// Research: practitioners use Monte Carlo simulation with capital-market-assumption
+// inputs to generate outcome ranges, not a flat percentage of the point estimate.
+
+const MARKET_ANNUAL_VOL = 0.16;  // long-run S&P 500 annualized volatility (commonly cited ~15-20%)
+const IDIOSYNCRATIC_VOL = 0.20;  // rule-of-thumb single-stock-specific volatility not captured by beta alone
+const MC_SIMULATIONS    = 1000;
+
+// Estimated annualized volatility per security, used as the Monte Carlo simulation input.
+// No historical price series is available from the free-tier APIs this app uses, so this
+// is a structural estimate rather than a measured one:
+// - bond ETFs: duration-driven price sensitivity (bonds don't have an equity beta worth using)
+// - diversified ETFs: beta x market volatility only (idiosyncratic risk is diversified away)
+// - individual stocks/REITs: beta-driven (systematic) risk combined with a flat
+//   idiosyncratic-risk assumption, since a single company's total volatility is
+//   consistently higher than what its market beta alone implies.
+function estimateAnnualVol(card) {
+  if (card.type === 'bond_etf') {
+    const dur = card.averageDuration ?? 5;
+    return Math.min(0.25, Math.max(0.03, dur * 0.012));
+  }
+  const beta = (isValid(card.beta) && card.beta > 0) ? Math.min(card.beta, 6) : 1;
+  if (card.type === 'etf') {
+    return Math.max(0.05, beta * MARKET_ANNUAL_VOL);
+  }
+  return Math.sqrt((beta * MARKET_ANNUAL_VOL) ** 2 + IDIOSYNCRATIC_VOL ** 2);
+}
+
+// Box-Muller standard normal sampler.
+function randNormal() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+// Simulates MC_SIMULATIONS lognormal (geometric Brownian motion) terminal outcomes using
+// the blended expected return as drift and the security's estimated volatility, then
+// returns the 10th/90th percentile as the pessimistic/optimistic range.
+function monteCarloRange(amount, annualReturn, annualVol, years) {
+  if (!(amount > 0) || !(years > 0) || !(annualVol > 0)) {
+    return { p10: amount, p90: amount };
+  }
+  const drift     = (annualReturn - 0.5 * annualVol * annualVol) * years;
+  const diffusion = annualVol * Math.sqrt(years);
+  const outcomes  = new Array(MC_SIMULATIONS);
+  for (let i = 0; i < MC_SIMULATIONS; i++) {
+    outcomes[i] = amount * Math.exp(drift + diffusion * randNormal());
+  }
+  outcomes.sort((a, b) => a - b);
+  return {
+    p10: outcomes[Math.floor(MC_SIMULATIONS * 0.10)],
+    p90: outcomes[Math.floor(MC_SIMULATIONS * 0.90)],
+  };
+}
 
 // Known SEC 30-day yields for common bond/income ETFs.
 // Finnhub free tier doesn't provide SEC yield — these are more accurate than TTM.
@@ -27,13 +117,13 @@ export function calcProjection(card, totalYears, isConservative, treasuryRates) 
     case 'reit':     return calcREITProjection(card, totalYears, isConservative, treasuryRates);
     case 'etf':      return calcETFProjection(card, totalYears, isConservative, treasuryRates);
     case 'stock':
-    default:         return calcStockProjection(card, totalYears, isConservative);
+    default:         return calcStockProjection(card, totalYears, isConservative, treasuryRates);
   }
 }
 
 // ─── STOCKS: 4-source dynamic model ───────────────────────────────────────────
 
-function calcStockProjection(card, years, isConservative) {
+function calcStockProjection(card, years, isConservative, treasuryRates) {
   // SOURCE 1: Analyst price target implied return (most forward-looking)
   let analystImpliedReturn = null;
   if (isValid(card.priceTargetConsensus) && isValid(card.price) && card.price > 0) {
@@ -62,11 +152,9 @@ function calcStockProjection(card, years, isConservative) {
   earningsGrowth = Math.min(0.25, Math.max(-0.15, earningsGrowth));
   const bogleReturn = divYield + earningsGrowth;
 
-  // SOURCE 3: CAPM
-  const riskFree = 0.043;
-  const capmReturn = (isValid(card.beta) && card.beta > 0 && card.beta < 3)
-    ? riskFree + card.beta * MARKET_PREMIUM
-    : MARKET_LONG_RUN;
+  // SOURCE 3: CAPM — live risk-free rate + live market-return-derived premium, see
+  // calcCapmReturn above. No longer excludes high-beta stocks.
+  const capmReturn = calcCapmReturn(card.beta, treasuryRates);
 
   // SOURCE 4: News sentiment nudge (−1.5% to +1.5%)
   const sentimentAdj = isValid(card.newsSentimentScore)
@@ -86,23 +174,12 @@ function calcStockProjection(card, years, isConservative) {
                   sentimentAdj;
   }
 
-  // Floor at 0% — time diversifies short-term losses on a long hold
-  blendedRate = Math.max(0, blendedRate);
+  // Floor at 0%, ceiling at 40% — the ceiling is a numerical sanity guard (e.g. against a
+  // corrupted analyst target or data glitch), not a real constraint on high-conviction
+  // names; unlike the old beta<3 gate it doesn't quietly average away genuine high-beta,
+  // high-growth companies below that threshold.
+  blendedRate = Math.min(0.40, Math.max(0, blendedRate));
   if (isConservative) blendedRate *= 0.80;
-
-  // Scenarios: use actual analyst high/low if available, else ±35% of base
-  let pessimisticRate, optimisticRate;
-  if (isValid(card.priceTargetLow) && isValid(card.priceTargetHigh) && isValid(card.price) && card.price > 0) {
-    pessimisticRate = Math.max(0, ((card.priceTargetLow  - card.price) / card.price) * 0.6);
-    optimisticRate  =              ((card.priceTargetHigh - card.price) / card.price) * 0.6;
-    if (isConservative) {
-      pessimisticRate *= 0.80;
-      optimisticRate  *= 0.80;
-    }
-  } else {
-    pessimisticRate = Math.max(0, blendedRate * 0.65);
-    optimisticRate  = blendedRate * 1.35;
-  }
 
   // Build data source label
   const sources = [];
@@ -114,8 +191,7 @@ function calcStockProjection(card, years, isConservative) {
   const dataSource = sources.join(' + ');
 
   return buildResult(card, blendedRate, divYield, years, dataSource,
-    'Weighted blend of Wall St. analyst price targets (40%), Bogle fundamental model (35%), and CAPM (25%), adjusted for news sentiment',
-    null, pessimisticRate, optimisticRate);
+    'Weighted blend of Wall St. analyst price targets (40%), Bogle fundamental model (35%), and CAPM (25%), adjusted for news sentiment');
 }
 
 // ─── ETFs: CAPM + optional holdings-weighted analyst targets + news sentiment ─
@@ -125,15 +201,7 @@ function calcETFProjection(card, years, isConservative, treasuryRates) {
     ?? normalizeDivYield(card.dividendYield)
     ?? 0.025;
 
-  const riskFree = 0.043;
-  let capmReturn;
-  if (isValid(card.beta) && card.beta > 0 && card.beta < 3) {
-    capmReturn = riskFree + card.beta * MARKET_PREMIUM;
-  } else if (treasuryRates?.spyForwardReturn) {
-    capmReturn = treasuryRates.spyForwardReturn;
-  } else {
-    capmReturn = MARKET_LONG_RUN;
-  }
+  const capmReturn = calcCapmReturn(card.beta, treasuryRates);
 
   const baseRate = (divYield * 0.3) + (capmReturn * 0.7);
 
@@ -218,8 +286,13 @@ function calcBondETFProjection(card, years, isConservative, treasuryRates) {
 
   rate = Math.max(0.005, rate + durationDrag + sentimentAdj);
 
-  const pessimisticRate = Math.max(0.005, rate - 0.015);
-  const optimisticRate  = rate + 0.010;
+  const amount = card._allocatedAmount;
+  const vol = estimateAnnualVol(card);
+  const { p10, p90 } = monteCarloRange(amount, rate, vol, years);
+  const pessimisticValue = Math.round(p10);
+  const optimisticValue  = Math.round(p90);
+  const pessimisticRate  = amount > 0 ? Math.pow(Math.max(pessimisticValue, 0) / amount, 1 / years) - 1 : 0;
+  const optimisticRate   = amount > 0 ? Math.pow(Math.max(optimisticValue,  0) / amount, 1 / years) - 1 : 0;
 
   const incomeYield   = actualYield ?? rate;
   const maturityLabel = years <= 2 ? '2' : years <= 5 ? '5' : '10';
@@ -229,12 +302,12 @@ function calcBondETFProjection(card, years, isConservative, treasuryRates) {
     baseRate:         rate,
     pessimisticRate,
     optimisticRate,
-    baseValue:        Math.round(card._allocatedAmount * Math.pow(1 + rate, years)),
-    pessimisticValue: Math.round(card._allocatedAmount * Math.pow(1 + pessimisticRate, years)),
-    optimisticValue:  Math.round(card._allocatedAmount * Math.pow(1 + optimisticRate, years)),
-    annualIncome:     Math.round(card._allocatedAmount * incomeYield),
+    baseValue:        Math.round(amount * Math.pow(1 + rate, years)),
+    pessimisticValue,
+    optimisticValue,
+    annualIncome:     Math.round(amount * incomeYield),
     dataSource,
-    methodology: `Live ${maturityLabel}-year Treasury yield from US Federal Reserve${durationDrag < 0 ? ', duration-adjusted for rate sensitivity' : ''}`,
+    methodology: `Live ${maturityLabel}-year Treasury yield from US Federal Reserve${durationDrag < 0 ? ', duration-adjusted for rate sensitivity' : ''} · range simulated via Monte Carlo (${(vol * 100).toFixed(0)}% est. annual volatility)`,
     assetNote: durationNote ?? 'Bond return based on current Treasury yield. Rising rates reduce bond prices.',
   };
 }
@@ -253,10 +326,7 @@ function calcREITProjection(card, years, isConservative, treasuryRates) {
 
   const reitBogle = (divYield * 0.70) + (ffoGrowth * 0.30);
 
-  const riskFree   = 0.043;
-  const capmReturn = (isValid(card.beta) && card.beta > 0 && card.beta < 3)
-    ? riskFree + card.beta * MARKET_PREMIUM
-    : 0.085;
+  const capmReturn = calcCapmReturn(card.beta, treasuryRates);
 
   // Enhancement 1 — analyst price target implied return
   let analystImpliedReturn = null;
@@ -314,19 +384,25 @@ function calcREITProjection(card, years, isConservative, treasuryRates) {
 
 // ─── Shared helpers ────────────────────────────────────────────────────────────
 
-function buildResult(card, rate, divYield, years, dataSource, methodology, assetNote = null, pessimisticOverride = null, optimisticOverride = null) {
-  const pessimisticRate = pessimisticOverride ?? rate * 0.60;
-  const optimisticRate  = optimisticOverride  ?? rate * 1.40;
+function buildResult(card, rate, divYield, years, dataSource, methodology, assetNote = null) {
+  const amount = card._allocatedAmount;
+  const vol = estimateAnnualVol(card);
+  const { p10, p90 } = monteCarloRange(amount, rate, vol, years);
+  const pessimisticValue = Math.round(p10);
+  const optimisticValue  = Math.round(p90);
+  // Equivalent annualized rates, derived from the simulated values, for display consistency.
+  const pessimisticRate = amount > 0 ? Math.pow(Math.max(pessimisticValue, 0) / amount, 1 / years) - 1 : 0;
+  const optimisticRate  = amount > 0 ? Math.pow(Math.max(optimisticValue,  0) / amount, 1 / years) - 1 : 0;
   return {
     baseRate:         rate,
     pessimisticRate,
     optimisticRate,
-    baseValue:        Math.round(card._allocatedAmount * Math.pow(1 + rate, years)),
-    pessimisticValue: Math.round(card._allocatedAmount * Math.pow(1 + pessimisticRate, years)),
-    optimisticValue:  Math.round(card._allocatedAmount * Math.pow(1 + optimisticRate, years)),
-    annualIncome:     Math.round(card._allocatedAmount * divYield),
+    baseValue:        Math.round(amount * Math.pow(1 + rate, years)),
+    pessimisticValue,
+    optimisticValue,
+    annualIncome:     Math.round(amount * divYield),
     dataSource,
-    methodology,
+    methodology: `${methodology} · range simulated via Monte Carlo (${(vol * 100).toFixed(0)}% est. annual volatility)`,
     assetNote,
   };
 }
