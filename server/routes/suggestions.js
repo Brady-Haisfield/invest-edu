@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { validateInputs } from '../utils/validators.js';
 import { getSuggestions } from '../services/claudeService.js';
-import { getQuote } from '../services/finnhubService.js';
+import { getQuote, getRecentHeadlines } from '../services/finnhubService.js';
 import { getTreasuryRates } from '../services/fredService.js';
 import { buildCandidatePool } from '../services/candidatePoolService.js';
 import { getAnalystData, getETFInfo, getPriceTarget, getAnalystSentiment, getETFHoldings } from '../services/fmpService.js';
@@ -89,7 +89,7 @@ router.post('/', async (req, res, next) => {
     );
 
     // ── Layer 4: analyst enrichment (stocks) + holdings/news (ETFs/REITs) ─────
-    const [ptResults, sentimentResults, newsResults, holdingsResults, congressResults] = await Promise.all([
+    const [ptResults, sentimentResults, newsResults, holdingsResults, congressResults, headlinesResults] = await Promise.all([
       // Price targets: stocks and REITs
       Promise.allSettled(baseCards.map((c) =>
         (c.type === 'stock' || c.type === 'reit') ? getPriceTarget(c.ticker) : Promise.resolve(null)
@@ -108,6 +108,10 @@ router.post('/', async (req, res, next) => {
       // already picked; never influences selection. All card types (public figures trade
       // ETFs and REITs too).
       Promise.allSettled(baseCards.map((c) => getRecentDisclosures(c.ticker))),
+      // Recent real headlines — same enrichment-after-picking pattern as everything else
+      // in this layer. Educational context only, same as the existing news sentiment
+      // label; never influences which tickers get picked.
+      Promise.allSettled(baseCards.map((c) => getRecentHeadlines(c.ticker))),
     ]);
 
     // ── Layer 4b: for ETFs with holdings, fetch price targets + quotes ────────
@@ -149,6 +153,7 @@ router.post('/', async (req, res, next) => {
       const newsData           = newsResults[i].status             === 'fulfilled' ? newsResults[i].value             : null;
       const etfHoldingsReturn  = etfHoldingsReturnResults[i].status === 'fulfilled' ? etfHoldingsReturnResults[i].value : null;
       const congressData      = congressResults[i].status          === 'fulfilled' ? congressResults[i].value          : null;
+      const headlinesData     = headlinesResults[i].status         === 'fulfilled' ? headlinesResults[i].value         : null;
 
       // Enrich with FMP
       const enriched = { ...card };
@@ -207,6 +212,11 @@ router.post('/', async (req, res, next) => {
       // Congressional trading disclosures — public record, factual only
       if (congressData) {
         enriched.congressTrading = congressData;
+      }
+
+      // Recent real headlines — educational context, not a signal
+      if (headlinesData && headlinesData.length > 0) {
+        enriched.recentHeadlines = headlinesData;
       }
 
       return enriched;

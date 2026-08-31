@@ -46,6 +46,45 @@ function extractFFO(financials) {
   return netIncome + depreciation;
 }
 
+// Recent real headlines for a ticker — same /company-news endpoint already used in
+// forecastService.js, extended here to keep url/source/datetime (forecastService only
+// keeps headline text for its prompt; suggestion cards show these directly to the user,
+// so the source/link matter for letting them verify it themselves).
+const NEWS_CACHE_TTL = 60 * 60 * 1000; // 1h — headlines don't need to be fresher than this
+const newsCache = new Map(); // ticker -> { data, time }
+
+export async function getRecentHeadlines(ticker, limit = 3) {
+  const hit = newsCache.get(ticker);
+  if (hit && Date.now() - hit.time < NEWS_CACHE_TTL) return hit.data;
+
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const sevenDaysAgo = now - 7 * 24 * 60 * 60;
+    const from = new Date(sevenDaysAgo * 1000).toISOString().split('T')[0];
+    const to = new Date(now * 1000).toISOString().split('T')[0];
+
+    const news = await finnhubFetch(`/company-news?symbol=${ticker}&from=${from}&to=${to}`);
+    const headlines = Array.isArray(news)
+      ? news
+          .filter((n) => n.headline && n.datetime)
+          .sort((a, b) => b.datetime - a.datetime)
+          .slice(0, limit)
+          .map((n) => ({
+            headline: n.headline,
+            source:   n.source ?? null,
+            url:      n.url ?? null,
+            date:     new Date(n.datetime * 1000).toISOString(),
+          }))
+      : [];
+
+    newsCache.set(ticker, { data: headlines, time: Date.now() });
+    return headlines;
+  } catch (err) {
+    console.warn(`[finnhubService] getRecentHeadlines failed for ${ticker}:`, err.message);
+    return [];
+  }
+}
+
 // Same-sub-industry peer tickers for a seed ticker — used by candidatePoolService.js
 // to source real, live candidates (FMP's ETF-holdings endpoint isn't available on this
 // account's plan, confirmed via direct testing: 402/404 on every holdings path tried).

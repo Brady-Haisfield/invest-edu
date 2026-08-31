@@ -54,6 +54,16 @@ function formatDisclosureDate(iso) {
   } catch { return 'unknown date'; }
 }
 
+function formatRelativeTime(iso) {
+  if (!iso) return '';
+  try {
+    const hours = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60)));
+    if (hours < 1) return 'just now';
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.round(hours / 24)}d ago`;
+  } catch { return ''; }
+}
+
 function RangeBar({ low, high, price }) {
   if (low == null || high == null || price == null || high === low) return null;
   const pct = Math.min(100, Math.max(0, ((price - low) / (high - low)) * 100));
@@ -130,7 +140,7 @@ const CONSENSUS_STYLE = {
 
 export default function StockCard({ card, equalProjection, user, isInPortfolio, onAddToPortfolio }) {
   const { ticker, name, price, fiftyTwoWeekLow, fiftyTwoWeekHigh, peRatio, marketCap, sector, reasoning, type, portfolioRole, retirementLens, watchOut, expenseRatio,
-    analystConsensus, newsSentimentScore, newsSentimentLabel, priceTargetConsensus, congressTrading } = card;
+    analystConsensus, newsSentimentScore, newsSentimentLabel, priceTargetConsensus, congressTrading, recentHeadlines } = card;
   const [lensOpen, setLensOpen] = useState(false);
   const [hoveredStat, setHoveredStat] = useState(null);
 
@@ -376,6 +386,38 @@ export default function StockCard({ card, equalProjection, user, isInPortfolio, 
             {congressTrading.mostRecent.daysToFile != null && `, filed ${congressTrading.mostRecent.daysToFile}d after the trade`}
             {' '}({formatDisclosureDate(congressTrading.mostRecent.date)})</>
           )}
+        </div>
+      )}
+
+      {/* Recent real headlines — educational context, not a trade signal */}
+      {recentHeadlines && recentHeadlines.length > 0 && (
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 'var(--space-2)' }}>
+          <div style={{
+            fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase',
+            letterSpacing: '0.06em', fontFamily: "'DM Mono', monospace", marginBottom: 6,
+          }}>Recent News</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {recentHeadlines.map((n, i) => (
+              <a
+                key={i}
+                href={n.url ?? undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'block', fontSize: 11, color: 'var(--text-secondary)',
+                  lineHeight: 1.4, textDecoration: 'none',
+                  pointerEvents: n.url ? 'auto' : 'none',
+                }}
+                onMouseEnter={(e) => { if (n.url) e.currentTarget.style.color = 'var(--accent-green-bright)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
+              >
+                {n.headline}
+                <span style={{ color: 'var(--text-muted)', fontSize: 9.5, marginLeft: 6, fontFamily: "'DM Mono', monospace" }}>
+                  {n.source ? `${n.source} · ` : ''}{formatRelativeTime(n.date)}
+                </span>
+              </a>
+            ))}
+          </div>
         </div>
       )}
 
